@@ -1,18 +1,14 @@
 import { FormEvent, ReactNode, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Device, DeviceStatus, NotificationChannelType } from '@device-monitoring/shared';
+import type { Beat, Device, DeviceStatus, NotificationChannel, NotificationChannelType } from '@device-monitoring/shared';
 import { api } from './api.js';
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
 const statusTone: Record<string, { label: string; hint: string }> = {
   up: { label: 'Online', hint: 'Responding normally' },
   down: { label: 'Offline', hint: 'Needs attention' },
   unknown: { label: 'Unknown', hint: 'Waiting for first beat' }
-};
-
-const channelTemplates: Record<NotificationChannelType, string> = {
-  discord: '{\n  "webhookUrl": "https://discord.com/api/webhooks/..."\n}',
-  telegram: '{\n  "botToken": "123456:bot-token",\n  "chatId": "123456789"\n}',
-  webhook: '{\n  "url": "https://example.com/device-monitoring-hook"\n}'
 };
 
 function formatDateTime(value?: string | null): string {
@@ -29,6 +25,28 @@ function formatLatency(value?: number | null): string {
   return value === null || value === undefined ? '—' : `${value}ms`;
 }
 
+interface BeatStats {
+  uptimePct: number | null;
+  avg: number | null;
+  min: number | null;
+  p95: number | null;
+}
+
+function calcStats(beats: Beat[]): BeatStats {
+  if (beats.length === 0) return { uptimePct: null, avg: null, min: null, p95: null };
+  const up = beats.filter((b) => b.status === 'up');
+  const uptimePct = Math.round((up.length / beats.length) * 1000) / 10;
+  const latencies = up.map((b) => b.latencyMs).filter((l): l is number => l !== null);
+  if (latencies.length === 0) return { uptimePct, avg: null, min: null, p95: null };
+  const avg = Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length);
+  const min = Math.min(...latencies);
+  const sorted = [...latencies].sort((a, b) => a - b);
+  const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+  return { uptimePct, avg, min, p95 };
+}
+
+// ─── shared presentational components ────────────────────────────────────────
+
 function StatusBadge({ status }: { status: string }) {
   const meta = statusTone[status] ?? { label: status, hint: status };
   return (
@@ -39,7 +57,17 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function SectionHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: ReactNode }) {
+function SectionHeader({
+  eyebrow,
+  title,
+  description,
+  action
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="section-header">
       <div>
@@ -72,15 +100,146 @@ function LoadingBlock({ label = 'Loading…' }: { label?: string }) {
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+  className
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <label className="field">
+    <label className={`field${className ? ` ${className}` : ''}`}>
       <span>{label}</span>
       {children}
       {hint ? <small>{hint}</small> : null}
     </label>
   );
 }
+
+// ─── SVG latency chart ────────────────────────────────────────────────────────
+
+function LatencyChart({ beats, deviceId }: { beats: Beat[]; deviceId: number }) {
+  const W = 1000;
+  const H = 180;
+  const PY = 14; // top and bottom padding inside the SVG plot area
+
+  const plotH = H - PY * 2;
+  const n = beats.length;
+
+  const upLatencies = beats
+    .filter((b) => b.status === 'up' && b.latencyMs !== null)
+    .map((b) => b.latencyMs!);
+  const maxLat = upLatencies.length > 0 ? Math.max(...upLatencies) : 100;
+  const yMax = Math.ceil((maxLat * 1.25) / 10) * 10 || 100;
+
+  const xOf = (i: number) => (n > 1 ? (i / (n - 1)) * W : W / 2);
+  const yOf = (ms: number) => PY + plotH - Math.min(1, ms / yMax) * plotH;
+
+  // Build connected line segments; break when a down beat is encountered
+  const segments: { x: number; y: number; beat: Beat }[][] = [];
+  let cur: { x: number; y: number; beat: Beat }[] = [];
+  for (let i = 0; i < beats.length; i++) {
+    const b = beats[i];
+    if (b.status === 'up' && b.latencyMs !== null) {
+      cur.push({ x: xOf(i), y: yOf(b.latencyMs), beat: b });
+    } else {
+      if (cur.length) {
+        segments.push(cur);
+        cur = [];
+      }
+    }
+  }
+  if (cur.length) segments.push(cur);
+
+  const downBeats = beats.map((b, i) => ({ b, i })).filter(({ b }) => b.status === 'down');
+  const dotR = n < 40 ? 4 : n < 100 ? 3 : 2;
+  const gradId = `lc${deviceId}`;
+
+  return (
+    <div className="latency-chart">
+      <div className="chart-ylabels">
+        <span>{yMax}ms</span>
+        <span>{Math.round(yMax / 2)}ms</span>
+        <span>0ms</span>
+      </div>
+      <div className="chart-area">
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#34d399" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {/* Horizontal grid lines */}
+          {[PY, PY + plotH / 2, PY + plotH].map((y, gi) => (
+            <line key={gi} x1={0} y1={y} x2={W} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+          ))}
+
+          {/* Down beat markers */}
+          {downBeats.map(({ b, i }) => (
+            <g key={b.id}>
+              <line
+                x1={xOf(i)}
+                y1={PY}
+                x2={xOf(i)}
+                y2={PY + plotH}
+                stroke="#fb7185"
+                strokeWidth="2"
+                strokeDasharray="4,3"
+                opacity="0.45"
+              />
+              <circle cx={xOf(i)} cy={PY + plotH - 5} r={5} fill="#fb7185" opacity="0.7">
+                <title>{formatDateTime(b.checkedAt)} · DOWN{b.error ? ` · ${b.error}` : ''}</title>
+              </circle>
+            </g>
+          ))}
+
+          {/* Fill under each connected line segment */}
+          {segments.map((seg, si) => {
+            if (seg.length < 2) return null;
+            const bottom = PY + plotH;
+            const d = `M${seg[0].x},${bottom} ${seg.map((p) => `L${p.x},${p.y}`).join(' ')} L${seg[seg.length - 1].x},${bottom} Z`;
+            return <path key={si} d={d} fill={`url(#${gradId})`} />;
+          })}
+
+          {/* Lines connecting up beats */}
+          {segments.map((seg, si) =>
+            seg.length >= 2 ? (
+              <polyline
+                key={si}
+                points={seg.map((p) => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="#34d399"
+                strokeWidth="2.5"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            ) : null
+          )}
+
+          {/* Dots at each up beat */}
+          {beats.map((b, i) => {
+            if (b.status !== 'up' || b.latencyMs === null) return null;
+            return (
+              <circle key={b.id} cx={xOf(i)} cy={yOf(b.latencyMs)} r={dotR} fill="#34d399">
+                <title>
+                  {formatDateTime(b.checkedAt)} · {formatLatency(b.latencyMs)}
+                </title>
+              </circle>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ─── login ────────────────────────────────────────────────────────────────────
 
 function LoginPage() {
   const [username, setUsername] = useState('');
@@ -97,10 +256,7 @@ function LoginPage() {
         <div className="login-hero">
           <p className="eyebrow">Self-hosted uptime</p>
           <h1>Device Monitoring</h1>
-          <p>
-            Monitor devices, latency, beat history, and alert transitions from one clean
-            command-center dashboard.
-          </p>
+          <p>Monitor devices, latency, beat history, and alert transitions from one clean command-center dashboard.</p>
           <div className="feature-pills" aria-label="Key features">
             <span>Live status</span>
             <span>Beat history</span>
@@ -121,13 +277,13 @@ function LoginPage() {
             <p>Use the admin account created on first boot.</p>
           </div>
           <Field label="Username">
-            <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
+            <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
           </Field>
           <Field label="Password">
             <input
               type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
             />
           </Field>
@@ -141,6 +297,8 @@ function LoginPage() {
   );
 }
 
+// ─── device form ──────────────────────────────────────────────────────────────
+
 function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(editing?.name ?? '');
@@ -149,6 +307,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
   const [timeoutMs, setTimeoutMs] = useState(editing?.timeoutMs ?? 5000);
   const [retries, setRetries] = useState(editing?.retries ?? 1);
   const [enabled, setEnabled] = useState(editing?.enabled ?? true);
+
   const mutation = useMutation({
     mutationFn: () =>
       editing
@@ -174,22 +333,27 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
       }}
     >
       <Field label="Device name">
-        <input placeholder="Core router" value={name} onChange={(event) => setName(event.target.value)} />
+        <input placeholder="Core router" value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
       <Field label="Host or IP">
-        <input placeholder="192.168.1.1" value={host} onChange={(event) => setHost(event.target.value)} />
+        <input placeholder="192.168.1.1" value={host} onChange={(e) => setHost(e.target.value)} />
       </Field>
       <Field label="Interval" hint="Seconds between checks">
-        <input type="number" min={10} value={intervalSeconds} onChange={(event) => setIntervalSeconds(Number(event.target.value))} />
+        <input
+          type="number"
+          min={10}
+          value={intervalSeconds}
+          onChange={(e) => setIntervalSeconds(Number(e.target.value))}
+        />
       </Field>
       <Field label="Timeout" hint="Milliseconds">
-        <input type="number" min={500} value={timeoutMs} onChange={(event) => setTimeoutMs(Number(event.target.value))} />
+        <input type="number" min={500} value={timeoutMs} onChange={(e) => setTimeoutMs(Number(e.target.value))} />
       </Field>
       <Field label="Retries" hint="Extra attempts before down">
-        <input type="number" min={0} value={retries} onChange={(event) => setRetries(Number(event.target.value))} />
+        <input type="number" min={0} value={retries} onChange={(e) => setRetries(Number(e.target.value))} />
       </Field>
       <label className="toggle-field">
-        <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         <span>
           <strong>Enabled</strong>
           <small>Scheduler will check this device.</small>
@@ -203,18 +367,26 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
   );
 }
 
+// ─── device detail with SVG chart ─────────────────────────────────────────────
+
 function DeviceDetail({ device }: { device: Device }) {
   const beats = useQuery({ queryKey: ['beats', device.id], queryFn: () => api.beats(device.id) });
-  const latest = beats.data?.beats.slice(0, 24).reverse() ?? [];
+  const chronological = useMemo(() => (beats.data?.beats ?? []).slice().reverse(), [beats.data]);
+  const stats = useMemo(() => calcStats(chronological), [chronological]);
+  const timeline = chronological.slice(-60);
+
+  const uptimeClass =
+    stats.uptimePct === null ? '' : stats.uptimePct >= 99 ? 'value-up' : stats.uptimePct >= 95 ? 'value-warn' : 'value-down';
 
   return (
     <section className="card detail-card">
       <SectionHeader
-        eyebrow="Beat timeline"
+        eyebrow="Beat history"
         title={device.name}
         description={`${device.host} · ${statusTone[device.currentStatus]?.hint ?? 'Monitoring status'}`}
         action={<StatusBadge status={device.currentStatus} />}
       />
+
       <div className="device-snapshot">
         <div>
           <span>Latest latency</span>
@@ -225,29 +397,44 @@ function DeviceDetail({ device }: { device: Device }) {
           <strong>{formatDateTime(device.lastCheckedAt)}</strong>
         </div>
         <div>
-          <span>Check interval</span>
+          <span>Interval</span>
           <strong>{device.intervalSeconds}s</strong>
         </div>
+        {stats.uptimePct !== null ? (
+          <div>
+            <span>Uptime</span>
+            <strong className={uptimeClass}>{stats.uptimePct}%</strong>
+          </div>
+        ) : null}
+        {stats.avg !== null ? (
+          <div>
+            <span>Avg latency</span>
+            <strong>{stats.avg}ms</strong>
+          </div>
+        ) : null}
+        {stats.p95 !== null ? (
+          <div>
+            <span>P95 latency</span>
+            <strong>{stats.p95}ms</strong>
+          </div>
+        ) : null}
       </div>
 
       {beats.isLoading ? <LoadingBlock label="Loading beat history…" /> : null}
-      {!beats.isLoading && latest.length === 0 ? (
+      {!beats.isLoading && chronological.length === 0 ? (
         <EmptyState title="No beats yet" description="The scheduler has not recorded a check for this device yet." />
       ) : null}
-      {latest.length > 0 ? (
+
+      {chronological.length > 0 ? (
         <>
-          <div className="timeline" aria-label={`Recent beat history for ${device.name}`}>
-            {latest.map((beat) => (
+          <LatencyChart beats={chronological} deviceId={device.id} />
+          <div className="timeline" aria-label={`Status timeline for ${device.name}`}>
+            {timeline.map((beat) => (
               <span
                 key={beat.id}
                 className={`beat beat-${beat.status}`}
                 title={`${formatDateTime(beat.checkedAt)} · ${formatLatency(beat.latencyMs)}${beat.error ? ` · ${beat.error}` : ''}`}
               />
-            ))}
-          </div>
-          <div className="latencies">
-            {latest.map((beat) => (
-              <span key={beat.id}>{beat.status === 'down' ? 'down' : formatLatency(beat.latencyMs)}</span>
             ))}
           </div>
         </>
@@ -256,11 +443,14 @@ function DeviceDetail({ device }: { device: Device }) {
   );
 }
 
+// ─── devices panel ────────────────────────────────────────────────────────────
+
 function DevicesPanel() {
   const queryClient = useQueryClient();
   const devices = useQuery({ queryKey: ['devices'], queryFn: api.devices });
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selected = devices.data?.devices.find((device) => device.id === selectedId) ?? devices.data?.devices[0];
+  const selected = devices.data?.devices.find((d) => d.id === selectedId) ?? devices.data?.devices[0];
+
   const remove = useMutation({
     mutationFn: api.deleteDevice,
     onSuccess: () => {
@@ -316,15 +506,21 @@ function DevicesPanel() {
                     </td>
                     <td>{formatLatency(device.lastLatencyMs)}</td>
                     <td>{formatDateTime(device.lastCheckedAt)}</td>
-                    <td>{device.enabled ? <span className="enabled-dot">Enabled</span> : <span className="disabled-dot">Paused</span>}</td>
+                    <td>
+                      {device.enabled ? (
+                        <span className="enabled-dot">Enabled</span>
+                      ) : (
+                        <span className="disabled-dot">Paused</span>
+                      )}
+                    </td>
                     <td>
                       <button
                         className="ghost danger"
                         type="button"
                         aria-label={`Delete ${device.name}`}
                         disabled={remove.isPending}
-                        onClick={(event) => {
-                          event.stopPropagation();
+                        onClick={(e) => {
+                          e.stopPropagation();
                           remove.mutate(device.id);
                         }}
                       >
@@ -344,37 +540,173 @@ function DevicesPanel() {
   );
 }
 
+// ─── notification channel structured forms ────────────────────────────────────
+
+interface ChannelFields {
+  discordWebhookUrl: string;
+  telegramBotToken: string;
+  telegramChatId: string;
+  webhookUrl: string;
+}
+
+function ChannelConfigFields({
+  type,
+  fields,
+  onChange
+}: {
+  type: NotificationChannelType;
+  fields: ChannelFields;
+  onChange: (partial: Partial<ChannelFields>) => void;
+}) {
+  if (type === 'discord') {
+    return (
+      <Field
+        label="Webhook URL"
+        hint="Server Settings → Integrations → Webhooks → Copy Webhook URL."
+        className="field-config"
+      >
+        <input
+          type="url"
+          placeholder="https://discord.com/api/webhooks/123456/token"
+          value={fields.discordWebhookUrl}
+          onChange={(e) => onChange({ discordWebhookUrl: e.target.value })}
+        />
+      </Field>
+    );
+  }
+  if (type === 'telegram') {
+    return (
+      <>
+        <Field label="Bot Token" hint="From @BotFather — /newbot then copy the token." className="field-config">
+          <input
+            placeholder="123456789:AABBcc..."
+            value={fields.telegramBotToken}
+            onChange={(e) => onChange({ telegramBotToken: e.target.value })}
+          />
+        </Field>
+        <Field label="Chat ID" hint="Your personal ID, group chat ID, or channel ID." className="field-config">
+          <input
+            placeholder="-1001234567890"
+            value={fields.telegramChatId}
+            onChange={(e) => onChange({ telegramChatId: e.target.value })}
+          />
+        </Field>
+      </>
+    );
+  }
+  return (
+    <Field
+      label="Endpoint URL"
+      hint="Device Monitoring will POST a JSON payload with event details to this URL."
+      className="field-config"
+    >
+      <input
+        type="url"
+        placeholder="https://example.com/hook"
+        value={fields.webhookUrl}
+        onChange={(e) => onChange({ webhookUrl: e.target.value })}
+      />
+    </Field>
+  );
+}
+
+// ─── notification panel ───────────────────────────────────────────────────────
+
 function NotificationPanel() {
   const queryClient = useQueryClient();
   const channels = useQuery({ queryKey: ['channels'], queryFn: api.channels });
+
   const [type, setType] = useState<NotificationChannelType>('discord');
-  const [name, setName] = useState('');
-  const [configText, setConfigText] = useState(channelTemplates.discord);
-  const [configError, setConfigError] = useState<string | null>(null);
+  const [channelName, setChannelName] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [channelFields, setChannelFields] = useState<ChannelFields>({
+    discordWebhookUrl: '',
+    telegramBotToken: '',
+    telegramChatId: '',
+    webhookUrl: ''
+  });
+
+  const [testingId, setTestingId] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, { ok: boolean; message: string } | undefined>>({});
+
+  function updateFields(partial: Partial<ChannelFields>) {
+    setChannelFields((prev) => ({ ...prev, ...partial }));
+    setFormError(null);
+  }
+
+  function buildConfig(): Record<string, unknown> | null {
+    if (type === 'discord') {
+      if (!channelFields.discordWebhookUrl.trim()) {
+        setFormError('Webhook URL is required');
+        return null;
+      }
+      return { webhookUrl: channelFields.discordWebhookUrl.trim() };
+    }
+    if (type === 'telegram') {
+      if (!channelFields.telegramBotToken.trim() || !channelFields.telegramChatId.trim()) {
+        setFormError('Bot token and Chat ID are both required');
+        return null;
+      }
+      return { botToken: channelFields.telegramBotToken.trim(), chatId: channelFields.telegramChatId.trim() };
+    }
+    if (!channelFields.webhookUrl.trim()) {
+      setFormError('Endpoint URL is required');
+      return null;
+    }
+    return { url: channelFields.webhookUrl.trim() };
+  }
+
   const create = useMutation({
-    mutationFn: (config: Record<string, unknown>) => api.createChannel({ type, name, enabled: true, config }),
+    mutationFn: (config: Record<string, unknown>) =>
+      api.createChannel({ type, name: channelName, enabled: true, config }),
     onSuccess: () => {
-      setName('');
-      setConfigError(null);
+      setChannelName('');
+      setChannelFields({ discordWebhookUrl: '', telegramBotToken: '', telegramChatId: '', webhookUrl: '' });
+      setFormError(null);
       void queryClient.invalidateQueries({ queryKey: ['channels'] });
     }
   });
-  const test = useMutation({ mutationFn: api.testChannel });
-  const remove = useMutation({ mutationFn: api.deleteChannel, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['channels'] }) });
+
+  const remove = useMutation({
+    mutationFn: api.deleteChannel,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['channels'] })
+  });
+
+  async function handleTest(id: number) {
+    setTestingId(id);
+    setTestResults((prev) => ({ ...prev, [id]: undefined }));
+    try {
+      await api.testChannel(id);
+      setTestResults((prev) => ({ ...prev, [id]: { ok: true, message: 'Test notification sent successfully!' } }));
+    } catch (err) {
+      setTestResults((prev) => ({
+        ...prev,
+        [id]: { ok: false, message: err instanceof Error ? err.message : 'Test failed' }
+      }));
+    } finally {
+      setTestingId(null);
+    }
+  }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    try {
-      const parsed = JSON.parse(configText) as unknown;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        setConfigError('Config must be a JSON object.');
-        return;
-      }
-      setConfigError(null);
-      create.mutate(parsed as Record<string, unknown>);
-    } catch {
-      setConfigError('Invalid JSON config. Check quotes, commas, and braces.');
+    const config = buildConfig();
+    if (config) create.mutate(config);
+  }
+
+  function channelTypeName(t: NotificationChannelType): string {
+    if (t === 'discord') return 'Discord';
+    if (t === 'telegram') return 'Telegram';
+    return 'Webhook';
+  }
+
+  function channelConfigLabel(channel: NotificationChannel): string {
+    // chatId is not a secret so it survives redaction; other fields are masked
+    if (channel.type === 'telegram') {
+      const chatId = String(channel.config.chatId ?? '');
+      return chatId ? `Chat ID: ${chatId}` : 'Token configured';
     }
+    return 'Configured — secret redacted for display';
   }
 
   return (
@@ -382,31 +714,34 @@ function NotificationPanel() {
       <SectionHeader
         eyebrow="Alerts"
         title="Notification channels"
-        description="Send alerts only when devices change state, keeping signal high and noise low."
+        description="Send alerts on state transitions: device goes down, comes back up, or is detected for the first time."
       />
+
       <form className="notification-form" onSubmit={handleSubmit}>
-        <Field label="Channel type">
+        <Field label="Channel type" className="field-type">
           <select
             value={type}
-            onChange={(event) => {
-              const nextType = event.target.value as NotificationChannelType;
-              setType(nextType);
-              setConfigText(channelTemplates[nextType]);
-              setConfigError(null);
+            onChange={(e) => {
+              setType(e.target.value as NotificationChannelType);
+              setFormError(null);
             }}
           >
-            <option value="discord">Discord</option>
-            <option value="telegram">Telegram</option>
-            <option value="webhook">Webhook</option>
+            <option value="discord">Discord webhook</option>
+            <option value="telegram">Telegram bot</option>
+            <option value="webhook">Generic webhook</option>
           </select>
         </Field>
-        <Field label="Channel name">
-          <input placeholder="Ops alerts" value={name} onChange={(event) => setName(event.target.value)} />
+        <Field label="Display name" className="field-name">
+          <input
+            placeholder="Ops alerts, Home lab…"
+            value={channelName}
+            onChange={(e) => setChannelName(e.target.value)}
+          />
         </Field>
-        <Field label="JSON config" hint="Secrets are redacted in API responses and the UI.">
-          <textarea value={configText} onChange={(event) => setConfigText(event.target.value)} spellCheck={false} />
-        </Field>
-        {(configError ?? create.error?.message) ? <p className="error form-error">{configError ?? create.error?.message}</p> : null}
+        <ChannelConfigFields type={type} fields={channelFields} onChange={updateFields} />
+        {(formError ?? create.error?.message) ? (
+          <p className="error form-error">{formError ?? create.error?.message}</p>
+        ) : null}
         <button className="primary form-submit" type="submit" disabled={create.isPending}>
           {create.isPending ? 'Adding…' : 'Add channel'}
         </button>
@@ -418,36 +753,50 @@ function NotificationPanel() {
       ) : null}
       {channels.data && channels.data.channels.length > 0 ? (
         <ul className="channel-list">
-          {channels.data.channels.map((channel) => (
-            <li className="channel-card" key={channel.id}>
-              <div>
-                <strong>{channel.name}</strong>
-                <span className="channel-type">{channel.type}</span>
-              </div>
-              <code>{JSON.stringify(channel.config)}</code>
-              <div className="channel-actions">
-                <button className="ghost" type="button" disabled={test.isPending} onClick={() => test.mutate(channel.id)}>
-                  Test
-                </button>
-                <button className="ghost danger" type="button" disabled={remove.isPending} onClick={() => remove.mutate(channel.id)}>
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
+          {channels.data.channels.map((channel) => {
+            const result = testResults[channel.id];
+            const isTesting = testingId === channel.id;
+            return (
+              <li className="channel-card" key={channel.id}>
+                <div className="channel-card-head">
+                  <div className="channel-card-info">
+                    <strong>{channel.name}</strong>
+                    <span className="channel-type">{channelTypeName(channel.type)}</span>
+                  </div>
+                  <p className="channel-config-label">{channelConfigLabel(channel)}</p>
+                </div>
+                <div className="channel-card-footer">
+                  {result !== undefined ? (
+                    <span className={result.ok ? 'test-ok' : 'test-error'}>{result.message}</span>
+                  ) : (
+                    <span />
+                  )}
+                  <div className="channel-actions">
+                    <button
+                      className="ghost"
+                      type="button"
+                      disabled={isTesting || testingId !== null}
+                      onClick={() => void handleTest(channel.id)}
+                    >
+                      {isTesting ? 'Testing…' : 'Send test'}
+                    </button>
+                    <button className="ghost danger" type="button" disabled={remove.isPending} onClick={() => remove.mutate(channel.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
-      {test.error ? <p className="error form-error">{test.error.message}</p> : null}
     </section>
   );
 }
 
-type StatCard = {
-  key: DeviceStatus | 'total';
-  label: string;
-  value: number;
-  caption: string;
-};
+// ─── dashboard ────────────────────────────────────────────────────────────────
+
+type StatCard = { key: DeviceStatus | 'total'; label: string; value: number; caption: string };
 
 function Dashboard() {
   const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary });
@@ -496,6 +845,8 @@ function Dashboard() {
     </section>
   );
 }
+
+// ─── app shell ────────────────────────────────────────────────────────────────
 
 export function App() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me, retry: false });
