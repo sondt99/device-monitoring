@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App.js';
 import './styles.css';
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { refetchInterval: 10_000, retry: 1 } } });
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
 
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>

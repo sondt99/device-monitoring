@@ -412,7 +412,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
 // ─── device detail with SVG chart ─────────────────────────────────────────────
 
 function DeviceDetail({ device }: { device: Device }) {
-  const beats = useQuery({ queryKey: ['beats', device.id], queryFn: () => api.beats(device.id) });
+  const beats = useQuery({ queryKey: ['beats', device.id], queryFn: () => api.beats(device.id), refetchInterval: 10_000 });
   const chronological = useMemo(() => (beats.data?.beats ?? []).slice().reverse(), [beats.data]);
   const stats = useMemo(() => calcStats(chronological), [chronological]);
   const timeline = chronological.slice(-60);
@@ -489,7 +489,7 @@ function DeviceDetail({ device }: { device: Device }) {
 
 function DevicesPanel() {
   const queryClient = useQueryClient();
-  const devices = useQuery({ queryKey: ['devices'], queryFn: api.devices });
+  const devices = useQuery({ queryKey: ['devices'], queryFn: api.devices, refetchInterval: 10_000 });
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = devices.data?.devices.find((d) => d.id === selectedId) ?? devices.data?.devices[0];
 
@@ -664,7 +664,7 @@ function ChannelConfigFields({
 
 function NotificationPanel() {
   const queryClient = useQueryClient();
-  const channels = useQuery({ queryKey: ['channels'], queryFn: api.channels });
+  const channels = useQuery({ queryKey: ['channels'], queryFn: api.channels, refetchInterval: 30_000 });
 
   const [type, setType] = useState<NotificationChannelType>('discord');
   const [channelName, setChannelName] = useState('');
@@ -849,7 +849,7 @@ function NotificationPanel() {
 type StatCard = { key: DeviceStatus | 'total'; label: string; value: number; caption: string };
 
 function StatCards() {
-  const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary });
+  const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary, refetchInterval: 10_000 });
   const cards: StatCard[] = useMemo(
     () => [
       { key: 'total', label: 'Total', value: summary.data?.total ?? 0, caption: 'Configured devices' },
@@ -876,7 +876,7 @@ function StatCards() {
 // ─── recent beats (compact sidebar) ──────────────────────────────────────────
 
 function RecentBeats() {
-  const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary });
+  const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary, refetchInterval: 10_000 });
 
   return (
     <div className="card recent-card">
