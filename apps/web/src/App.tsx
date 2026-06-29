@@ -486,6 +486,7 @@ function DevicesPanel() {
                   <th>Status</th>
                   <th>Latency</th>
                   <th>Last check</th>
+                  <th>Last online</th>
                   <th>Enabled</th>
                   <th />
                 </tr>
@@ -506,6 +507,7 @@ function DevicesPanel() {
                     </td>
                     <td>{formatLatency(device.lastLatencyMs)}</td>
                     <td>{formatDateTime(device.lastCheckedAt)}</td>
+                    <td>{formatDateTime(device.lastOnlineAt)}</td>
                     <td>
                       {device.enabled ? (
                         <span className="enabled-dot">Enabled</span>

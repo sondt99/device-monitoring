@@ -17,6 +17,7 @@ export const deviceSchema = z.object({
   currentStatus: deviceStatusSchema,
   lastLatencyMs: z.number().int().nonnegative().nullable(),
   lastCheckedAt: z.string().datetime().nullable(),
+  lastOnlineAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
 });

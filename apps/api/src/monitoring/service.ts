@@ -17,9 +17,13 @@ export function recordCheck(db: Db, device: Device, result: CheckResult): { prev
     );
     db.prepare(
       `UPDATE devices
-       SET current_status = ?, last_latency_ms = ?, last_checked_at = ?, updated_at = ?
+       SET current_status    = ?,
+           last_latency_ms   = ?,
+           last_checked_at   = ?,
+           last_online_at    = CASE WHEN ? = 'up' THEN ? ELSE last_online_at END,
+           updated_at        = ?
        WHERE id = ?`
-    ).run(result.status, result.latencyMs, checkedAt, checkedAt, device.id);
+    ).run(result.status, result.latencyMs, checkedAt, result.status, checkedAt, checkedAt, device.id);
   })();
   return { previousStatus, currentStatus: result.status };
 }

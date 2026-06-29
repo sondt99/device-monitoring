@@ -41,6 +41,7 @@ export function migrate(db: Db): void {
       current_status TEXT NOT NULL DEFAULT 'unknown' CHECK (current_status IN ('unknown','up','down')),
       last_latency_ms INTEGER,
       last_checked_at TEXT,
+      last_online_at TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
@@ -76,4 +77,12 @@ export function migrate(db: Db): void {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
   `);
+
+  // Safe migration: add column only if it does not exist yet (SQLite ignores
+  // the ADD COLUMN if the column is already present when wrapped in try-catch)
+  try {
+    db.exec(`ALTER TABLE devices ADD COLUMN last_online_at TEXT`);
+  } catch {
+    /* column already exists — nothing to do */
+  }
 }

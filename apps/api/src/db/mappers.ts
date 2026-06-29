@@ -22,6 +22,7 @@ export function mapDevice(row: Row): Device {
     currentStatus: String(row.current_status) as DeviceStatus,
     lastLatencyMs: row.last_latency_ms === null ? null : Number(row.last_latency_ms),
     lastCheckedAt: nullableIso(row.last_checked_at),
+    lastOnlineAt: nullableIso(row.last_online_at),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at)
   };
