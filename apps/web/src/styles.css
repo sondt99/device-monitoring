@@ -337,6 +337,23 @@ code {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Two-column bottom row: recent beats + notifications */
+.bottom-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.recent-card .event-list {
+  max-height: 440px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
 .stat {
@@ -815,7 +832,8 @@ tbody tr:last-child td {
 
 @media (max-width: 1100px) {
   .login-panel,
-  .stats {
+  .stats,
+  .bottom-row {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -853,6 +871,7 @@ tbody tr:last-child td {
 
   .login-panel,
   .stats,
+  .bottom-row,
   .device-form,
   .notification-form {
     grid-template-columns: 1fr;

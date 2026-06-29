@@ -794,11 +794,11 @@ function NotificationPanel() {
   );
 }
 
-// ─── dashboard ────────────────────────────────────────────────────────────────
+// ─── stat cards ───────────────────────────────────────────────────────────────
 
 type StatCard = { key: DeviceStatus | 'total'; label: string; value: number; caption: string };
 
-function Dashboard() {
+function StatCards() {
   const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary });
   const cards: StatCard[] = useMemo(
     () => [
@@ -811,38 +811,45 @@ function Dashboard() {
   );
 
   return (
-    <section className="stack dashboard-section">
-      <div className="stats">
-        {cards.map((card) => (
-          <div className={`stat card stat-${card.key}`} key={card.key}>
-            <span>{card.label}</span>
-            <strong>{card.value}</strong>
-            <small>{card.caption}</small>
-          </div>
-        ))}
-      </div>
-      <div className="card recent-card">
-        <SectionHeader title="Recent beats" description="Latest checks across all monitored devices." />
-        {summary.isLoading ? <LoadingBlock label="Loading recent beats…" /> : null}
-        {!summary.isLoading && summary.data?.recentEvents.length === 0 ? (
-          <EmptyState title="No beat events yet" description="Events appear here after the scheduler records checks." />
-        ) : null}
-        {summary.data && summary.data.recentEvents.length > 0 ? (
-          <ul className="event-list">
-            {summary.data.recentEvents.map((event) => (
-              <li key={`${event.deviceId}-${event.checkedAt}`}>
-                <StatusBadge status={event.status} />
-                <div>
-                  <strong>{event.deviceName}</strong>
-                  <span>{formatDateTime(event.checkedAt)}</span>
-                </div>
-                <em>{event.error ?? formatLatency(event.latencyMs)}</em>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    </section>
+    <div className="stats">
+      {cards.map((card) => (
+        <div className={`stat card stat-${card.key}`} key={card.key}>
+          <span>{card.label}</span>
+          <strong>{card.value}</strong>
+          <small>{card.caption}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── recent beats (compact sidebar) ──────────────────────────────────────────
+
+function RecentBeats() {
+  const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary });
+
+  return (
+    <div className="card recent-card">
+      <SectionHeader eyebrow="Activity" title="Recent beats" />
+      {summary.isLoading ? <LoadingBlock label="Loading…" /> : null}
+      {!summary.isLoading && summary.data?.recentEvents.length === 0 ? (
+        <EmptyState title="No events yet" description="Events appear after the scheduler records checks." />
+      ) : null}
+      {summary.data && summary.data.recentEvents.length > 0 ? (
+        <ul className="event-list">
+          {summary.data.recentEvents.map((event) => (
+            <li key={`${event.deviceId}-${event.checkedAt}`}>
+              <StatusBadge status={event.status} />
+              <div>
+                <strong>{event.deviceName}</strong>
+                <span>{formatDateTime(event.checkedAt)}</span>
+              </div>
+              <em>{event.error ?? formatLatency(event.latencyMs)}</em>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -877,9 +884,12 @@ export function App() {
           </button>
         </div>
       </header>
-      <Dashboard />
+      <StatCards />
       <DevicesPanel />
-      <NotificationPanel />
+      <div className="bottom-row">
+        <RecentBeats />
+        <NotificationPanel />
+      </div>
     </main>
   );
 }
