@@ -12,6 +12,8 @@ services:
       DATABASE_PATH: /data/device-monitoring.sqlite
       STATIC_DIR: /app/public
       COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET to at least 32 random characters}
+      # Set SECURE_COOKIES=true only if serving over HTTPS (behind TLS terminator like nginx/Caddy)
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
       ADMIN_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME on first boot}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD to at least 12 characters on first boot}
     volumes:

@@ -10,6 +10,10 @@ const envSchema = z.object({
   ADMIN_USERNAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   COOKIE_SECRET: z.string().min(32).optional(),
+  SECURE_COOKIES: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   STATIC_DIR: z.string().optional()
 });
 

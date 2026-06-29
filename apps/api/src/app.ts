@@ -30,7 +30,7 @@ export async function buildApp(db: Db, config: AppConfig) {
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
   app.get('/healthz', async () => ({ ok: true }));
-  await registerAuthRoutes(app, db, config.NODE_ENV === 'production');
+  await registerAuthRoutes(app, db, config.SECURE_COOKIES);
 
   app.addHook('preHandler', async (request, reply) => {
     if (!request.url.startsWith('/api/') || request.url === '/api/auth/login') return;
