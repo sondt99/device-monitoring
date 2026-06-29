@@ -37,12 +37,39 @@ async function postJson(url: string, body: unknown): Promise<void> {
   }
 }
 
+function discordEmbed(payload: NotificationPayload): Record<string, unknown> {
+  const { device, currentStatus, previousStatus, latencyMs, error, checkedAt } = payload;
+  const color = currentStatus === 'up' ? 0x34d399 : currentStatus === 'down' ? 0xfb7185 : 0xc4b5fd;
+  const icon = currentStatus === 'up' ? '✅' : currentStatus === 'down' ? '🚨' : '❔';
+  const label = (s: DeviceStatus) => (s === 'up' ? 'Online' : s === 'down' ? 'Offline' : 'Unknown');
+
+  const fields: { name: string; value: string; inline: boolean }[] = [
+    { name: 'Host', value: `\`${device.host}\``, inline: true },
+    { name: 'Latency', value: latencyMs !== null ? `${latencyMs}ms` : 'n/a', inline: true },
+    { name: 'Previous', value: label(previousStatus), inline: true }
+  ];
+  if (error) fields.push({ name: 'Error', value: error, inline: false });
+
+  return {
+    embeds: [
+      {
+        color,
+        author: { name: 'Device Monitoring' },
+        title: `${icon}  ${device.name} — ${label(currentStatus)}`,
+        fields,
+        timestamp: checkedAt,
+        footer: { text: 'device-monitoring · status change' }
+      }
+    ]
+  };
+}
+
 export const discordProvider: NotificationProvider = {
   type: 'discord',
   async send(config, payload) {
     const webhookUrl = String(config.webhookUrl ?? config.url ?? '');
     if (!webhookUrl) throw new Error('Discord webhookUrl is required');
-    await postJson(webhookUrl, { content: renderMessage(payload) });
+    await postJson(webhookUrl, discordEmbed(payload));
   }
 };
 
