@@ -1,0 +1,31 @@
+{
+  "name": "device-monitoring",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lightweight self-hosted device monitoring with secure auth and notifications.",
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @device-monitoring/shared --filter @device-monitoring/api --filter @device-monitoring/web dev",
+    "build": "pnpm --filter @device-monitoring/shared build && pnpm --filter @device-monitoring/web build && pnpm --filter @device-monitoring/api build",
+    "typecheck": "pnpm --filter @device-monitoring/shared build && pnpm -r typecheck",
+    "lint": "eslint . --quiet",
+    "test": "pnpm -r test -- --run",
+    "test:coverage": "pnpm -r test -- --run --coverage",
+    "format": "prettier --write .",
+    "start": "pnpm --filter @device-monitoring/api start"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.7",
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "eslint": "^9.18.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

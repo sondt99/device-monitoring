@@ -1,0 +1,21 @@
+services:
+  device-monitoring:
+    build: .
+    image: device-monitoring:local
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_PATH: /data/device-monitoring.sqlite
+      STATIC_DIR: /app/public
+      COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET to at least 32 random characters}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME on first boot}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD to at least 12 characters on first boot}
+    volumes:
+      - device-monitoring-data:/data
+
+volumes:
+  device-monitoring-data:
