@@ -29,7 +29,7 @@ export function recordCheck(db: Db, device: Device, result: CheckResult): { prev
 }
 
 export async function checkDevice(db: Db, checker: DeviceChecker, device: Device): Promise<void> {
-  const result = await checker.check({ host: device.host, timeoutMs: device.timeoutMs, retries: device.retries });
+  const result = await checker.check({ host: device.host, checkType: device.checkType, checkUrl: device.checkUrl, timeoutMs: device.timeoutMs, retries: device.retries });
   const transition = recordCheck(db, device, result);
   if (transition.previousStatus !== transition.currentStatus) {
     await notifyTransition(db, {

@@ -1,4 +1,4 @@
-import type { Beat, Device, DeviceStatus, NotificationChannel, NotificationChannelType, User } from '@device-monitoring/shared';
+import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType, User } from '@device-monitoring/shared';
 
 type Row = Record<string, unknown>;
 
@@ -19,6 +19,8 @@ export function mapDevice(row: Row): Device {
     timeoutMs: Number(row.timeout_ms),
     retries: Number(row.retries),
     enabled: intBool(row.enabled),
+    checkType: String(row.check_type ?? 'ping') as CheckType,
+    checkUrl: nullableIso(row.check_url),
     currentStatus: String(row.current_status) as DeviceStatus,
     lastLatencyMs: row.last_latency_ms === null ? null : Number(row.last_latency_ms),
     lastCheckedAt: nullableIso(row.last_checked_at),

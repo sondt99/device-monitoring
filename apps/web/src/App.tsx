@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Beat, Device, DeviceStatus, NotificationChannel, NotificationChannelType } from '@device-monitoring/shared';
+import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType } from '@device-monitoring/shared';
 import { api } from './api.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -43,6 +43,10 @@ function calcStats(beats: Beat[]): BeatStats {
   const sorted = [...latencies].sort((a, b) => a - b);
   const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
   return { uptimePct, avg, min, p95 };
+}
+
+function deriveHost(url: string): string {
+  try { return new URL(url).hostname; } catch { return ''; }
 }
 
 // ─── shared presentational components ────────────────────────────────────────
@@ -303,22 +307,27 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
   const queryClient = useQueryClient();
   const [name, setName] = useState(editing?.name ?? '');
   const [host, setHost] = useState(editing?.host ?? '');
+  const [checkType, setCheckType] = useState<CheckType>(editing?.checkType ?? 'ping');
+  const [checkUrl, setCheckUrl] = useState(editing?.checkUrl ?? '');
   const [intervalSeconds, setIntervalSeconds] = useState(editing?.intervalSeconds ?? 60);
   const [timeoutMs, setTimeoutMs] = useState(editing?.timeoutMs ?? 5000);
   const [retries, setRetries] = useState(editing?.retries ?? 1);
   const [enabled, setEnabled] = useState(editing?.enabled ?? true);
 
   const mutation = useMutation({
-    mutationFn: () =>
-      editing
-        ? api.updateDevice(editing.id, { name, host, intervalSeconds, timeoutMs, retries, enabled })
-        : api.createDevice({ name, host, intervalSeconds, timeoutMs, retries, enabled }),
+    mutationFn: () => {
+      const resolvedCheckUrl = checkType === 'http' ? checkUrl || null : null;
+      return editing
+        ? api.updateDevice(editing.id, { name, host, checkType, checkUrl: resolvedCheckUrl, intervalSeconds, timeoutMs, retries, enabled })
+        : api.createDevice({ name, host, checkType, checkUrl: resolvedCheckUrl, intervalSeconds, timeoutMs, retries, enabled });
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['devices'] });
       void queryClient.invalidateQueries({ queryKey: ['summary'] });
       if (!editing) {
         setName('');
         setHost('');
+        setCheckUrl('');
       }
       onDone?.();
     }
@@ -332,12 +341,45 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
         mutation.mutate();
       }}
     >
-      <Field label="Device name">
+      <Field label="Device name" className="field-device-name">
         <input placeholder="Core router" value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="Host or IP">
-        <input placeholder="192.168.1.1" value={host} onChange={(e) => setHost(e.target.value)} />
-      </Field>
+      <div className="field field-check-type">
+        <span>Check type</span>
+        <div className="toggle-group">
+          <button
+            type="button"
+            className={checkType === 'ping' ? 'toggle-active' : ''}
+            onClick={() => setCheckType('ping')}
+          >
+            Ping
+          </button>
+          <button
+            type="button"
+            className={checkType === 'http' ? 'toggle-active' : ''}
+            onClick={() => setCheckType('http')}
+          >
+            HTTP
+          </button>
+        </div>
+      </div>
+      {checkType === 'ping' ? (
+        <Field label="Host / IP" hint="Hostname, FQDN, or IPv4/IPv6 address" className="field-host">
+          <input placeholder="192.168.1.1" value={host} onChange={(e) => setHost(e.target.value)} />
+        </Field>
+      ) : (
+        <Field label="Endpoint URL" hint="Full HTTPS URL to probe — host derived automatically." className="field-check-url">
+          <input
+            type="url"
+            placeholder="https://example.com/health"
+            value={checkUrl}
+            onChange={(e) => {
+              setCheckUrl(e.target.value);
+              setHost(deriveHost(e.target.value));
+            }}
+          />
+        </Field>
+      )}
       <Field label="Interval" hint="Seconds between checks">
         <input
           type="number"
@@ -483,6 +525,7 @@ function DevicesPanel() {
                 <tr>
                   <th>Name</th>
                   <th>Host</th>
+                  <th>Type</th>
                   <th>Status</th>
                   <th>Latency</th>
                   <th>Last check</th>
@@ -502,6 +545,11 @@ function DevicesPanel() {
                       <strong>{device.name}</strong>
                     </td>
                     <td className="muted-mono">{device.host}</td>
+                    <td>
+                      <span className={`check-type-badge check-type-${device.checkType}`}>
+                        {device.checkType === 'http' ? 'HTTP' : 'Ping'}
+                      </span>
+                    </td>
                     <td>
                       <StatusBadge status={device.currentStatus} />
                     </td>

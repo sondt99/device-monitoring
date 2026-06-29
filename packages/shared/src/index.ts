@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const deviceStatusSchema = z.enum(['unknown', 'up', 'down']);
 export type DeviceStatus = z.infer<typeof deviceStatusSchema>;
 
+export const checkTypeSchema = z.enum(['ping', 'http']);
+export type CheckType = z.infer<typeof checkTypeSchema>;
+
 export const notificationChannelTypeSchema = z.enum(['discord', 'telegram', 'webhook']);
 export type NotificationChannelType = z.infer<typeof notificationChannelTypeSchema>;
 
@@ -15,6 +18,8 @@ export const deviceSchema = z.object({
   retries: z.number().int().min(0).max(10),
   enabled: z.boolean(),
   currentStatus: deviceStatusSchema,
+  checkType: checkTypeSchema,
+  checkUrl: z.string().url().nullable(),
   lastLatencyMs: z.number().int().nonnegative().nullable(),
   lastCheckedAt: z.string().datetime().nullable(),
   lastOnlineAt: z.string().datetime().nullable(),
@@ -26,6 +31,8 @@ export type Device = z.infer<typeof deviceSchema>;
 export const createDeviceSchema = z.object({
   name: z.string().trim().min(1).max(120),
   host: z.string().trim().min(1).max(255),
+  checkType: checkTypeSchema.default('ping'),
+  checkUrl: z.string().url().nullable().default(null),
   intervalSeconds: z.number().int().min(10).max(86_400).default(60),
   timeoutMs: z.number().int().min(500).max(60_000).default(5_000),
   retries: z.number().int().min(0).max(10).default(1),

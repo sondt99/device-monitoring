@@ -2,7 +2,7 @@ import { buildApp } from './app.js';
 import { bootstrapAdmin } from './auth/bootstrap.js';
 import { loadConfig } from './config.js';
 import { migrate, openDatabase } from './db/database.js';
-import { PingChecker } from './monitoring/checker.js';
+import { MultiChecker } from './monitoring/checker.js';
 import { MonitoringScheduler } from './monitoring/service.js';
 
 const config = loadConfig();
@@ -11,7 +11,7 @@ migrate(db);
 await bootstrapAdmin(db, config.ADMIN_USERNAME, config.ADMIN_PASSWORD);
 
 const app = await buildApp(db, config);
-const scheduler = new MonitoringScheduler(db, new PingChecker());
+const scheduler = new MonitoringScheduler(db, new MultiChecker());
 scheduler.start();
 
 const shutdown = async () => {

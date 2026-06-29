@@ -42,6 +42,8 @@ export function migrate(db: Db): void {
       last_latency_ms INTEGER,
       last_checked_at TEXT,
       last_online_at TEXT,
+      check_type TEXT NOT NULL DEFAULT 'ping' CHECK (check_type IN ('ping','http')),
+      check_url TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
@@ -78,11 +80,21 @@ export function migrate(db: Db): void {
     );
   `);
 
-  // Safe migration: add column only if it does not exist yet (SQLite ignores
-  // the ADD COLUMN if the column is already present when wrapped in try-catch)
-  try {
-    db.exec(`ALTER TABLE devices ADD COLUMN last_online_at TEXT`);
-  } catch {
-    /* column already exists — nothing to do */
-  }
+  // ── migrations (idempotent: wrapped in try-catch) ───────────────────────
+  const addColumn = (sql: string) => { try { db.exec(sql); } catch { /* already exists */ } };
+
+  addColumn(`ALTER TABLE devices ADD COLUMN last_online_at TEXT`);
+  addColumn(`ALTER TABLE devices ADD COLUMN check_type TEXT NOT NULL DEFAULT 'ping'`);
+  addColumn(`ALTER TABLE devices ADD COLUMN check_url TEXT`);
+
+  // Backfill last_online_at from existing beats for devices that were
+  // online before this column was introduced.
+  db.exec(`
+    UPDATE devices
+    SET last_online_at = (
+      SELECT MAX(checked_at) FROM beats
+      WHERE beats.device_id = devices.id AND beats.status = 'up'
+    )
+    WHERE last_online_at IS NULL
+  `);
 }
