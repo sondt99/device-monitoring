@@ -112,5 +112,18 @@ export const dashboardSummarySchema = z.object({
 });
 export type DashboardSummary = z.infer<typeof dashboardSummarySchema>;
 
+export const notificationEventSchema = z.object({
+  id: z.number().int().positive(),
+  deviceId: z.number().int().positive(),
+  deviceName: z.string(),
+  channelId: z.number().int().positive().nullable(),
+  channelName: z.string().nullable(),
+  transition: z.string(),
+  success: z.boolean(),
+  error: z.string().nullable(),
+  createdAt: z.string().datetime()
+});
+export type NotificationEvent = z.infer<typeof notificationEventSchema>;
+
 export const apiErrorSchema = z.object({ error: z.string(), details: z.unknown().optional() });
 export type ApiError = z.infer<typeof apiErrorSchema>;

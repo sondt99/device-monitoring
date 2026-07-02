@@ -1,10 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { createNotificationChannelSchema, updateNotificationChannelSchema } from '@device-monitoring/shared';
 import type { Db } from '../db/database.js';
-import { createChannel, deleteChannel, getChannel, listChannels, sendToChannel, updateChannel } from '../notifications/service.js';
+import { createChannel, deleteChannel, getChannel, listChannels, listEvents, sendToChannel, updateChannel } from '../notifications/service.js';
 
 export async function registerNotificationRoutes(app: FastifyInstance, db: Db): Promise<void> {
   app.get('/api/notification-channels', async () => ({ channels: listChannels(db) }));
+
+  app.get('/api/notification-events', async (request) => {
+    const limit = Math.min(200, Math.max(1, Number((request.query as { limit?: string }).limit ?? 50)));
+    return { events: listEvents(db, limit) };
+  });
 
   app.post('/api/notification-channels', async (request, reply) => {
     const channel = createChannel(db, createNotificationChannelSchema.parse(request.body));

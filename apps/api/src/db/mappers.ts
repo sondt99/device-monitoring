@@ -1,4 +1,4 @@
-import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType, User } from '@device-monitoring/shared';
+import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType, NotificationEvent, User } from '@device-monitoring/shared';
 
 type Row = Record<string, unknown>;
 
@@ -51,6 +51,20 @@ export function mapChannel(row: Row, redact = true): NotificationChannel {
     config: redact ? redactSecrets(config) : config,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at)
+  };
+}
+
+export function mapEvent(row: Row): NotificationEvent {
+  return {
+    id: Number(row.id),
+    deviceId: Number(row.device_id),
+    deviceName: String(row.device_name ?? ''),
+    channelId: row.channel_id === null ? null : Number(row.channel_id),
+    channelName: row.channel_name === null || row.channel_name === undefined ? null : String(row.channel_name),
+    transition: String(row.transition),
+    success: intBool(row.success),
+    error: row.error === null ? null : String(row.error),
+    createdAt: iso(row.created_at)
   };
 }
 

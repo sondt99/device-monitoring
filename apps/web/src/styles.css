@@ -1070,3 +1070,32 @@ tbody tr:last-child td {
   justify-content: flex-end;
   white-space: nowrap;
 }
+
+/* ─── notification history ──────────────────────────────────────────────────── */
+
+.notification-event-list li {
+  grid-template-columns: auto 1fr auto;
+}
+
+.notif-status {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.125rem 0.5rem;
+  border-radius: 6px;
+  align-self: center;
+}
+
+.notif-ok {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--accent);
+}
+
+.notif-fail {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.notif-error {
+  color: var(--danger);
+  font-size: 0.82rem;
+}

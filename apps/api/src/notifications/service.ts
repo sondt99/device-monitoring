@@ -1,10 +1,24 @@
-import type { CreateNotificationChannelInput, NotificationChannel, UpdateNotificationChannelInput } from '@device-monitoring/shared';
+import type { CreateNotificationChannelInput, NotificationChannel, NotificationEvent, UpdateNotificationChannelInput } from '@device-monitoring/shared';
 import type { Db } from '../db/database.js';
-import { mapChannel } from '../db/mappers.js';
+import { mapChannel, mapEvent } from '../db/mappers.js';
 import { providers, type NotificationPayload } from './providers.js';
 
 export function listChannels(db: Db): NotificationChannel[] {
   return db.prepare('SELECT * FROM notification_channels ORDER BY name COLLATE NOCASE').all().map((row) => mapChannel(row as Record<string, unknown>));
+}
+
+export function listEvents(db: Db, limit: number): NotificationEvent[] {
+  return db
+    .prepare(
+      `SELECT ne.*, d.name AS device_name, nc.name AS channel_name
+       FROM notification_events ne
+       LEFT JOIN devices d ON d.id = ne.device_id
+       LEFT JOIN notification_channels nc ON nc.id = ne.channel_id
+       ORDER BY ne.created_at DESC
+       LIMIT ?`
+    )
+    .all(limit)
+    .map((row) => mapEvent(row as Record<string, unknown>));
 }
 
 export function getChannel(db: Db, id: number, redact = true): NotificationChannel | null {

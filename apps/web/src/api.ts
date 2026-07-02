@@ -6,6 +6,7 @@ import type {
   Device,
   LoginInput,
   NotificationChannel,
+  NotificationEvent,
   UpdateDeviceInput,
   UpdateNotificationChannelInput,
   User
@@ -40,5 +41,6 @@ export const api = {
   createChannel: (input: CreateNotificationChannelInput) => request<{ channel: NotificationChannel }>('/api/notification-channels', { method: 'POST', body: JSON.stringify(input) }),
   updateChannel: (id: number, input: UpdateNotificationChannelInput) => request<{ channel: NotificationChannel }>(`/api/notification-channels/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteChannel: (id: number) => request<void>(`/api/notification-channels/${id}`, { method: 'DELETE' }),
-  testChannel: (id: number) => request<{ ok: true }>(`/api/notification-channels/${id}/test`, { method: 'POST' })
+  testChannel: (id: number) => request<{ ok: true }>(`/api/notification-channels/${id}/test`, { method: 'POST' }),
+  notificationEvents: () => request<{ events: NotificationEvent[] }>('/api/notification-events?limit=50')
 };

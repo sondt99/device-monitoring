@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType } from '@device-monitoring/shared';
+import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType, NotificationEvent } from '@device-monitoring/shared';
 import { api } from './api.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -1019,6 +1019,40 @@ function RecentBeats() {
   );
 }
 
+// ─── notification history ────────────────────────────────────────────────────
+
+function NotificationHistory() {
+  const events = useQuery({ queryKey: ['notification-events'], queryFn: api.notificationEvents, refetchInterval: 30_000 });
+
+  return (
+    <div className="card notification-history-card">
+      <SectionHeader eyebrow="Delivery log" title="Notification history" />
+      {events.isLoading ? <LoadingBlock label="Loading…" /> : null}
+      {!events.isLoading && events.data?.events.length === 0 ? (
+        <EmptyState title="No deliveries yet" description="Notification events appear when device status changes trigger alerts." />
+      ) : null}
+      {events.data && events.data.events.length > 0 ? (
+        <ul className="event-list notification-event-list">
+          {events.data.events.map((event: NotificationEvent) => (
+            <li key={event.id}>
+              <span className={`notif-status ${event.success ? 'notif-ok' : 'notif-fail'}`}>
+                {event.success ? 'Sent' : 'Failed'}
+              </span>
+              <div>
+                <strong>{event.deviceName || `Device #${event.deviceId}`}</strong>
+                <span>
+                  {event.channelName ?? 'Deleted channel'} &middot; {event.transition} &middot; {formatDateTime(event.createdAt)}
+                </span>
+              </div>
+              {event.error ? <em className="notif-error">{event.error}</em> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── app shell ────────────────────────────────────────────────────────────────
 
 export function App() {
@@ -1056,6 +1090,7 @@ export function App() {
         <RecentBeats />
         <NotificationPanel />
       </div>
+      <NotificationHistory />
     </main>
   );
 }
