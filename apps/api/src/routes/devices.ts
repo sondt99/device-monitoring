@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createDeviceSchema, updateDeviceSchema } from '@device-monitoring/shared';
 import type { Db } from '../db/database.js';
-import { createDevice, deleteDevice, getDevice, listBeats, listDevices, updateDevice } from '../devices/repository.js';
+import { createDevice, deleteDevice, getDevice, getUptimeReport, listBeats, listDevices, updateDevice } from '../devices/repository.js';
 
 export async function registerDeviceRoutes(app: FastifyInstance, db: Db): Promise<void> {
   app.get('/api/devices', async () => ({ devices: listDevices(db) }));
@@ -36,5 +36,12 @@ export async function registerDeviceRoutes(app: FastifyInstance, db: Db): Promis
     if (!getDevice(db, id)) return reply.code(404).send({ error: 'Device not found' });
     const limit = Math.min(1000, Math.max(1, Number((request.query as { limit?: string }).limit ?? 200)));
     return { beats: listBeats(db, id, limit) };
+  });
+
+  app.get('/api/devices/:id/uptime', async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!getDevice(db, id)) return reply.code(404).send({ error: 'Device not found' });
+    const days = Math.min(365, Math.max(1, Number((request.query as { days?: string }).days ?? 30)));
+    return { uptime: getUptimeReport(db, id, days) };
   });
 }

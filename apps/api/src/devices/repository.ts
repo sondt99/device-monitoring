@@ -57,3 +57,31 @@ export function listBeats(db: Db, deviceId: number, limit = 200) {
     .all(deviceId, limit)
     .map((row) => mapBeat(row as Record<string, unknown>));
 }
+
+export interface DailyUptime {
+  date: string;
+  total: number;
+  up: number;
+  uptimePct: number;
+}
+
+export function getUptimeReport(db: Db, deviceId: number, days: number): DailyUptime[] {
+  const rows = db
+    .prepare(
+      `SELECT date(checked_at) AS day,
+              COUNT(*) AS total,
+              SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) AS up_count
+       FROM beats
+       WHERE device_id = ? AND checked_at >= date('now', ?)
+       GROUP BY day
+       ORDER BY day`
+    )
+    .all(deviceId, `-${days} days`) as { day: string; total: number; up_count: number }[];
+
+  return rows.map((r) => ({
+    date: r.day,
+    total: r.total,
+    up: r.up_count,
+    uptimePct: r.total > 0 ? Math.round((r.up_count / r.total) * 1000) / 10 : 0
+  }));
+}

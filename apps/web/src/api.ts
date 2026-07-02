@@ -37,6 +37,7 @@ export const api = {
   updateDevice: (id: number, input: UpdateDeviceInput) => request<{ device: Device }>(`/api/devices/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteDevice: (id: number) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   beats: (id: number) => request<{ beats: Beat[] }>(`/api/devices/${id}/beats?limit=200`),
+  uptime: (id: number, days = 30) => request<{ uptime: { date: string; total: number; up: number; uptimePct: number }[] }>(`/api/devices/${id}/uptime?days=${days}`),
   channels: () => request<{ channels: NotificationChannel[] }>('/api/notification-channels'),
   createChannel: (input: CreateNotificationChannelInput) => request<{ channel: NotificationChannel }>('/api/notification-channels', { method: 'POST', body: JSON.stringify(input) }),
   updateChannel: (id: number, input: UpdateNotificationChannelInput) => request<{ channel: NotificationChannel }>(`/api/notification-channels/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),

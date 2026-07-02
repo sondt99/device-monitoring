@@ -1108,6 +1108,61 @@ tbody tr:last-child td {
 
 /* ─── group filter ──────────────────────────────────────────────────────────── */
 
+/* ─── uptime heatmap ────────────────────────────────────────────────────────── */
+
+.uptime-heatmap {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.heatmap-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.heatmap-cells {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.hm-cell {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.hm-full { background: var(--accent); }
+.hm-warn { background: #fbbf24; }
+.hm-low  { background: #f97316; }
+.hm-down { background: var(--danger); }
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.heatmap-legend .hm-cell {
+  width: 10px;
+  height: 10px;
+  margin-left: 0.6rem;
+}
+
+.heatmap-legend .hm-cell:first-child {
+  margin-left: 0;
+}
+
 .group-filter select {
   font-size: 0.82rem;
   padding: 0.35rem 0.65rem;
