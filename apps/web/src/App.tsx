@@ -1253,9 +1253,11 @@ function useLiveTitle(down: number) {
 // ─── app shell ────────────────────────────────────────────────────────────────
 
 export function App() {
-  const isStatusPage = window.location.pathname === '/status';
-  if (isStatusPage) return <StatusPage />;
+  if (window.location.pathname === '/status') return <StatusPage />;
+  return <Dashboard />;
+}
 
+function Dashboard() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me, retry: false });
   const queryClient = useQueryClient();
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => void queryClient.clear() });
