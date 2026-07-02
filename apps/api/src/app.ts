@@ -44,7 +44,7 @@ export async function buildApp(db: Db, config: AppConfig) {
     if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return;
     if (!request.url.startsWith('/api/') || request.url === '/api/auth/login') return;
     if (request.headers['x-device-monitoring-csrf'] !== '1') {
-      await reply.code(403).send({ error: 'Missing CSRF header' });
+      return reply.code(403).send({ error: 'Missing CSRF header' });
     }
   });
 

@@ -45,8 +45,8 @@ export const api = {
   testChannel: (id: number) => request<{ ok: true }>(`/api/notification-channels/${id}/test`, { method: 'POST' }),
   notificationEvents: () => request<{ events: NotificationEvent[] }>('/api/notification-events?limit=50'),
   publicStatus: () => request<{
-    overall: 'up' | 'down' | 'unknown';
-    counts: { up: number; down: number; unknown: number };
+    overall: 'up' | 'degraded' | 'down' | 'unknown';
+    counts: { up: number; degraded: number; down: number; unknown: number };
     devices: { name: string; group: string | null; currentStatus: string; lastLatencyMs: number | null; lastCheckedAt: string | null; lastOnlineAt: string | null }[];
   }>('/api/status')
 };

@@ -1207,8 +1207,8 @@ function StatusPage() {
         <section key={groupName} className="card status-group">
           <h2>{groupName}</h2>
           <ul className="status-device-list">
-            {devices.map((d) => (
-              <li key={d.name}>
+            {devices.map((d, i) => (
+              <li key={`${d.name}-${i}`}>
                 <div className="status-device-info">
                   <StatusBadge status={d.currentStatus} />
                   <strong>{d.name}</strong>

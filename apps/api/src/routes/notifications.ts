@@ -2,12 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { createNotificationChannelSchema, updateNotificationChannelSchema } from '@device-monitoring/shared';
 import type { Db } from '../db/database.js';
 import { createChannel, deleteChannel, getChannel, listChannels, listEvents, sendToChannel, updateChannel } from '../notifications/service.js';
+import { clampIntParam } from './params.js';
 
 export async function registerNotificationRoutes(app: FastifyInstance, db: Db): Promise<void> {
   app.get('/api/notification-channels', async () => ({ channels: listChannels(db) }));
 
   app.get('/api/notification-events', async (request) => {
-    const limit = Math.min(200, Math.max(1, Number((request.query as { limit?: string }).limit ?? 50)));
+    const limit = clampIntParam((request.query as { limit?: string }).limit, 50, 1, 200);
     return { events: listEvents(db, limit) };
   });
 

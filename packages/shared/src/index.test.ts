@@ -4,6 +4,11 @@ import { createDeviceSchema, loginSchema } from './index.js';
 describe('shared schemas', () => {
   it('applies safe defaults for devices', () => {
     const parsed = createDeviceSchema.parse({ name: 'Router', host: '192.168.1.1' });
+    expect(parsed.checkType).toBe('ping');
+    expect(parsed.checkUrl).toBeNull();
+    expect(parsed.checkPort).toBeNull();
+    expect(parsed.group).toBeNull();
+    expect(parsed.latencyThresholdMs).toBeNull();
     expect(parsed.intervalSeconds).toBe(60);
     expect(parsed.timeoutMs).toBe(5000);
     expect(parsed.retries).toBe(1);

@@ -38,8 +38,10 @@ function resolveStatus(result: CheckResult, thresholdMs: number | null): DeviceS
 export async function checkDevice(db: Db, checker: DeviceChecker, device: Device): Promise<void> {
   const result = await checker.check({ host: device.host, checkType: device.checkType, checkUrl: device.checkUrl, checkPort: device.checkPort, timeoutMs: device.timeoutMs, retries: device.retries });
   const effectiveStatus = resolveStatus(result, device.latencyThresholdMs);
-  const effectiveResult = { ...result, status: effectiveStatus === 'degraded' ? 'up' as const : result.status };
-  const transition = recordCheck(db, device, effectiveResult, effectiveStatus);
+  // Beats store the raw reachability outcome (up/down); "degraded" only exists
+  // at the device level, derived from latency vs threshold. Uptime math stays
+  // pure while the dashboard still surfaces slow-but-alive devices.
+  const transition = recordCheck(db, device, result, effectiveStatus);
   if (transition.previousStatus !== transition.currentStatus) {
     await notifyTransition(db, {
       device: { id: device.id, name: device.name, host: device.host },
@@ -89,7 +91,9 @@ export class MonitoringScheduler {
       const due = this.dueAt.get(device.id) ?? 0;
       if (now < due) continue;
       this.dueAt.set(device.id, now + device.intervalSeconds * 1000);
-      void checkDevice(this.db, this.checker, device);
+      checkDevice(this.db, this.checker, device).catch((error) => {
+        console.error(`Check failed for device ${device.id} (${device.name}):`, error);
+      });
     }
   }
 
