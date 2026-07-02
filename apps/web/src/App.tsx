@@ -362,6 +362,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
   const [host, setHost] = useState(editing?.host ?? '');
   const [checkType, setCheckType] = useState<CheckType>(editing?.checkType ?? 'ping');
   const [checkUrl, setCheckUrl] = useState(editing?.checkUrl ?? '');
+  const [checkPort, setCheckPort] = useState<number | ''>(editing?.checkPort ?? '');
   const [intervalSeconds, setIntervalSeconds] = useState(editing?.intervalSeconds ?? 60);
   const [timeoutMs, setTimeoutMs] = useState(editing?.timeoutMs ?? 5000);
   const [retries, setRetries] = useState(editing?.retries ?? 1);
@@ -372,6 +373,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
     setHost(editing?.host ?? '');
     setCheckType(editing?.checkType ?? 'ping');
     setCheckUrl(editing?.checkUrl ?? '');
+    setCheckPort(editing?.checkPort ?? '');
     setIntervalSeconds(editing?.intervalSeconds ?? 60);
     setTimeoutMs(editing?.timeoutMs ?? 5000);
     setRetries(editing?.retries ?? 1);
@@ -381,9 +383,10 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
   const mutation = useMutation({
     mutationFn: () => {
       const resolvedCheckUrl = checkType === 'http' ? checkUrl || null : null;
+      const resolvedCheckPort = checkType === 'tcp' && checkPort ? Number(checkPort) : null;
       return editing
-        ? api.updateDevice(editing.id, { name, host, checkType, checkUrl: resolvedCheckUrl, intervalSeconds, timeoutMs, retries, enabled })
-        : api.createDevice({ name, host, checkType, checkUrl: resolvedCheckUrl, intervalSeconds, timeoutMs, retries, enabled });
+        ? api.updateDevice(editing.id, { name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, intervalSeconds, timeoutMs, retries, enabled })
+        : api.createDevice({ name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, intervalSeconds, timeoutMs, retries, enabled });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['devices'] });
@@ -392,6 +395,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
         setName('');
         setHost('');
         setCheckUrl('');
+        setCheckPort('');
       }
       onDone?.();
     }
@@ -411,27 +415,23 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
       <div className="field field-check-type">
         <span>Check type</span>
         <div className="toggle-group">
-          <button
-            type="button"
-            className={checkType === 'ping' ? 'toggle-active' : ''}
-            onClick={() => setCheckType('ping')}
-          >
+          <button type="button" className={checkType === 'ping' ? 'toggle-active' : ''} onClick={() => setCheckType('ping')}>
             Ping
           </button>
-          <button
-            type="button"
-            className={checkType === 'http' ? 'toggle-active' : ''}
-            onClick={() => setCheckType('http')}
-          >
+          <button type="button" className={checkType === 'http' ? 'toggle-active' : ''} onClick={() => setCheckType('http')}>
             HTTP
+          </button>
+          <button type="button" className={checkType === 'tcp' ? 'toggle-active' : ''} onClick={() => setCheckType('tcp')}>
+            TCP
           </button>
         </div>
       </div>
-      {checkType === 'ping' ? (
+      {checkType === 'ping' && (
         <Field label="Host / IP" hint="Hostname, FQDN, or IPv4/IPv6 address" className="field-host">
           <input placeholder="192.168.1.1" value={host} onChange={(e) => setHost(e.target.value)} />
         </Field>
-      ) : (
+      )}
+      {checkType === 'http' && (
         <Field label="Endpoint URL" hint="Full HTTPS URL to probe — host derived automatically." className="field-check-url">
           <input
             type="url"
@@ -443,6 +443,23 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
             }}
           />
         </Field>
+      )}
+      {checkType === 'tcp' && (
+        <>
+          <Field label="Host / IP" hint="Hostname or IP address" className="field-host">
+            <input placeholder="db.local" value={host} onChange={(e) => setHost(e.target.value)} />
+          </Field>
+          <Field label="Port" hint="TCP port to connect to (1–65535)" className="field-port">
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              placeholder="5432"
+              value={checkPort}
+              onChange={(e) => setCheckPort(e.target.value === '' ? '' : Number(e.target.value))}
+            />
+          </Field>
+        </>
       )}
       <Field label="Interval" hint="Seconds between checks">
         <input
@@ -628,7 +645,7 @@ function DevicesPanel() {
                     <td className="muted-mono">{device.host}</td>
                     <td>
                       <span className={`check-type-badge check-type-${device.checkType}`}>
-                        {device.checkType === 'http' ? 'HTTP' : 'Ping'}
+                        {device.checkType === 'http' ? 'HTTP' : device.checkType === 'tcp' ? `TCP:${device.checkPort ?? '?'}` : 'Ping'}
                       </span>
                     </td>
                     <td>

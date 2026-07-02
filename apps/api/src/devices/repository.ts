@@ -14,10 +14,10 @@ export function getDevice(db: Db, id: number): Device | null {
 export function createDevice(db: Db, input: CreateDeviceInput): Device {
   const result = db
     .prepare(
-      `INSERT INTO devices (name, host, check_type, check_url, interval_seconds, timeout_ms, retries, enabled)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO devices (name, host, check_type, check_url, check_port, interval_seconds, timeout_ms, retries, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(input.name, input.host, input.checkType, input.checkUrl, input.intervalSeconds, input.timeoutMs, input.retries, input.enabled ? 1 : 0);
+    .run(input.name, input.host, input.checkType, input.checkUrl, input.checkPort, input.intervalSeconds, input.timeoutMs, input.retries, input.enabled ? 1 : 0);
   return getDevice(db, Number(result.lastInsertRowid)) as Device;
 }
 
@@ -27,7 +27,7 @@ export function updateDevice(db: Db, id: number, input: UpdateDeviceInput): Devi
   const next = { ...current, ...input };
   db.prepare(
     `UPDATE devices
-     SET name = ?, host = ?, check_type = ?, check_url = ?,
+     SET name = ?, host = ?, check_type = ?, check_url = ?, check_port = ?,
          interval_seconds = ?, timeout_ms = ?, retries = ?, enabled = ?, updated_at = ?
      WHERE id = ?`
   ).run(
@@ -35,6 +35,7 @@ export function updateDevice(db: Db, id: number, input: UpdateDeviceInput): Devi
     next.host,
     next.checkType,
     next.checkUrl,
+    next.checkPort,
     next.intervalSeconds,
     next.timeoutMs,
     next.retries,

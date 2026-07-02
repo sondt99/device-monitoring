@@ -476,6 +476,12 @@ code {
   color: var(--unknown);
 }
 
+.check-type-tcp {
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+}
+
 .notification-form .field-type {
   grid-column: span 2;
 }

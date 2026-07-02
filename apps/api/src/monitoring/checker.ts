@@ -1,12 +1,14 @@
 import { execFile } from 'node:child_process';
+import { createConnection } from 'node:net';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
 export interface CheckTarget {
   host: string;
-  checkType: 'ping' | 'http';
+  checkType: 'ping' | 'http' | 'tcp';
   checkUrl: string | null;
+  checkPort: number | null;
   timeoutMs: number;
   retries: number;
 }
@@ -74,11 +76,40 @@ export class HttpChecker {
   }
 }
 
+export class TcpChecker {
+  async check(target: CheckTarget): Promise<CheckResult> {
+    const { host, checkPort, timeoutMs, retries } = target;
+    if (!checkPort) return { status: 'down', latencyMs: null, error: 'No port configured for TCP check' };
+
+    const attempts = retries + 1;
+    let lastError = 'TCP check failed';
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const started = Date.now();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const socket = createConnection({ host, port: checkPort, timeout: timeoutMs });
+          socket.once('connect', () => { socket.destroy(); resolve(); });
+          socket.once('timeout', () => { socket.destroy(); reject(new Error(`Timeout after ${timeoutMs}ms`)); });
+          socket.once('error', (err) => { socket.destroy(); reject(err); });
+        });
+        return { status: 'up', latencyMs: Date.now() - started, error: null };
+      } catch (err) {
+        lastError = err instanceof Error ? err.message.slice(0, 500) : 'TCP connection failed';
+      }
+    }
+    return { status: 'down', latencyMs: null, error: lastError };
+  }
+}
+
 export class MultiChecker implements DeviceChecker {
   private readonly ping = new PingChecker();
   private readonly http = new HttpChecker();
+  private readonly tcp = new TcpChecker();
 
   async check(target: CheckTarget): Promise<CheckResult> {
-    return target.checkType === 'http' ? this.http.check(target) : this.ping.check(target);
+    if (target.checkType === 'http') return this.http.check(target);
+    if (target.checkType === 'tcp') return this.tcp.check(target);
+    return this.ping.check(target);
   }
 }

@@ -42,8 +42,9 @@ export function migrate(db: Db): void {
       last_latency_ms INTEGER,
       last_checked_at TEXT,
       last_online_at TEXT,
-      check_type TEXT NOT NULL DEFAULT 'ping' CHECK (check_type IN ('ping','http')),
+      check_type TEXT NOT NULL DEFAULT 'ping' CHECK (check_type IN ('ping','http','tcp')),
       check_url TEXT,
+      check_port INTEGER,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
@@ -86,6 +87,7 @@ export function migrate(db: Db): void {
   addColumn(`ALTER TABLE devices ADD COLUMN last_online_at TEXT`);
   addColumn(`ALTER TABLE devices ADD COLUMN check_type TEXT NOT NULL DEFAULT 'ping'`);
   addColumn(`ALTER TABLE devices ADD COLUMN check_url TEXT`);
+  addColumn(`ALTER TABLE devices ADD COLUMN check_port INTEGER`);
 
   // Backfill last_online_at from existing beats for devices that were
   // online before this column was introduced.
