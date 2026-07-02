@@ -258,7 +258,7 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
 
 // ─── SVG latency chart ────────────────────────────────────────────────────────
 
-function LatencyChart({ beats, deviceId }: { beats: Beat[]; deviceId: number }) {
+function LatencyChart({ beats, deviceId, thresholdMs }: { beats: Beat[]; deviceId: number; thresholdMs?: number | null }) {
   const W = 1000;
   const H = 180;
   const PY = 14; // top and bottom padding inside the SVG plot area
@@ -269,7 +269,7 @@ function LatencyChart({ beats, deviceId }: { beats: Beat[]; deviceId: number }) 
   const upLatencies = beats
     .filter((b) => b.status === 'up' && b.latencyMs !== null)
     .map((b) => b.latencyMs!);
-  const maxLat = upLatencies.length > 0 ? Math.max(...upLatencies) : 100;
+  const maxLat = Math.max(upLatencies.length > 0 ? Math.max(...upLatencies) : 100, thresholdMs ?? 0);
   const yMax = Math.ceil((maxLat * 1.25) / 10) * 10 || 100;
 
   const xOf = (i: number) => (n > 1 ? (i / (n - 1)) * W : W / 2);
@@ -315,6 +315,25 @@ function LatencyChart({ beats, deviceId }: { beats: Beat[]; deviceId: number }) 
           {[PY, PY + plotH / 2, PY + plotH].map((y, gi) => (
             <line key={gi} x1={0} y1={y} x2={W} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
           ))}
+
+          {/* Latency alert threshold */}
+          {thresholdMs ? (
+            <g>
+              <line
+                x1={0}
+                y1={yOf(thresholdMs)}
+                x2={W}
+                y2={yOf(thresholdMs)}
+                stroke="#fbbf24"
+                strokeWidth="1.5"
+                strokeDasharray="8,5"
+                opacity="0.55"
+              />
+              <text x={W - 8} y={yOf(thresholdMs) - 6} textAnchor="end" fill="#fbbf24" opacity="0.75" fontSize="12">
+                alert {thresholdMs}ms
+              </text>
+            </g>
+          ) : null}
 
           {/* Down beat markers */}
           {downBeats.map(({ b, i }) => (
@@ -674,7 +693,7 @@ function DeviceDetail({ device }: { device: Device }) {
 
       {chronological.length > 0 ? (
         <>
-          <LatencyChart beats={chronological} deviceId={device.id} />
+          <LatencyChart beats={chronological} deviceId={device.id} thresholdMs={device.latencyThresholdMs} />
           <div className="timeline" aria-label={`Status timeline for ${device.name}`}>
             {timeline.map((beat) => (
               <button
@@ -721,6 +740,7 @@ function DevicesPanel() {
   const queryClient = useQueryClient();
   const devices = useQuery({ queryKey: ['devices'], queryFn: api.devices, refetchInterval: 10_000 });
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [deletingDevice, setDeletingDevice] = useState<Device | null>(null);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
@@ -749,51 +769,46 @@ function DevicesPanel() {
     }
   });
 
+  const closeForm = () => {
+    setFormOpen(false);
+    setEditingDevice(null);
+  };
+
   return (
     <section className="stack devices-section">
-      <div className="card">
-        <SectionHeader
-          eyebrow="Inventory"
-          title={editingDevice ? `Edit — ${editingDevice.name}` : 'Devices'}
-          description={
-            editingDevice
-              ? 'Update device settings and save.'
-              : 'Add network devices, hosts, or appliances and define how often they should be checked.'
-          }
-          action={
-            editingDevice ? (
-              <button className="ghost" type="button" onClick={() => setEditingDevice(null)}>
-                Cancel edit
-              </button>
-            ) : undefined
-          }
-        />
-        <DeviceForm
-          editing={editingDevice ?? undefined}
-          onDone={() => setEditingDevice(null)}
-        />
-      </div>
-
       <div className="card table-card">
         <SectionHeader
-          title="Device inventory"
+          eyebrow="Inventory"
+          title="Devices"
           description="Select a device to inspect its latest beat history."
           action={
-            groups.length > 0 ? (
-              <div className="group-filter">
-                <select value={groupFilter ?? ''} onChange={(e) => setGroupFilter(e.target.value || null)}>
-                  <option value="">All groups</option>
-                  {groups.map((g) => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
-                </select>
-              </div>
-            ) : undefined
+            <div className="table-actions">
+              {groups.length > 0 ? (
+                <div className="group-filter">
+                  <select value={groupFilter ?? ''} onChange={(e) => setGroupFilter(e.target.value || null)}>
+                    <option value="">All groups</option>
+                    {groups.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              <button
+                className="primary"
+                type="button"
+                onClick={() => {
+                  setEditingDevice(null);
+                  setFormOpen(true);
+                }}
+              >
+                + Add device
+              </button>
+            </div>
           }
         />
         {devices.isLoading ? <LoadingBlock label="Loading devices…" /> : null}
         {!devices.isLoading && devices.data?.devices.length === 0 ? (
-          <EmptyState title="No devices configured" description="Add your first router, NAS, server, or IoT device above." />
+          <EmptyState title="No devices configured" description="Use the Add device button to monitor your first router, NAS, server, or IoT device." />
         ) : null}
         {devices.data && devices.data.devices.length > 0 ? (
           <div className="table-scroll">
@@ -832,9 +847,19 @@ function DevicesPanel() {
                     <td>
                       <StatusBadge status={device.currentStatus} />
                     </td>
-                    <td>{formatLatency(device.lastLatencyMs)}</td>
-                    <td>{formatDateTime(device.lastCheckedAt)}</td>
-                    <td>{formatDateTime(device.lastOnlineAt)}</td>
+                    <td
+                      className={`mono ${
+                        device.lastLatencyMs !== null && device.latencyThresholdMs
+                          ? device.lastLatencyMs > device.latencyThresholdMs
+                            ? 'value-warn'
+                            : 'value-up'
+                          : ''
+                      }`}
+                    >
+                      {formatLatency(device.lastLatencyMs)}
+                    </td>
+                    <td className="mono muted-cell">{formatDateTime(device.lastCheckedAt)}</td>
+                    <td className="mono muted-cell">{formatDateTime(device.lastOnlineAt)}</td>
                     <td>
                       {device.enabled ? (
                         <span className="enabled-dot">Enabled</span>
@@ -850,7 +875,7 @@ function DevicesPanel() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setEditingDevice(device);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                          setFormOpen(true);
                         }}
                       >
                         Edit
@@ -876,6 +901,14 @@ function DevicesPanel() {
       </div>
 
       {selected ? <DeviceDetail device={selected} /> : null}
+
+      <Modal
+        open={formOpen}
+        title={editingDevice ? `Edit — ${editingDevice.name}` : 'Add device'}
+        onClose={closeForm}
+      >
+        <DeviceForm editing={editingDevice ?? undefined} onDone={closeForm} />
+      </Modal>
 
       <ConfirmDialog
         open={deletingDevice !== null}
@@ -1175,16 +1208,47 @@ function StatCards() {
     [summary.data]
   );
 
+  const s = summary.data;
+  const fleetSegments =
+    s && s.total > 0
+      ? ([
+          { key: 'up', label: 'Online', count: s.up },
+          { key: 'degraded', label: 'Degraded', count: s.degraded },
+          { key: 'down', label: 'Offline', count: s.down },
+          { key: 'unknown', label: 'Unknown', count: s.unknown }
+        ] as const).filter((seg) => seg.count > 0)
+      : [];
+
   return (
-    <div className="stats">
-      {cards.map((card) => (
-        <div className={`stat card stat-${card.key}`} key={card.key}>
-          <span>{card.label}</span>
-          <strong>{card.value}</strong>
-          <small>{card.caption}</small>
+    <>
+      <div className="stats">
+        {cards.map((card) => (
+          <div className={`stat card stat-${card.key}`} key={card.key}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.caption}</small>
+          </div>
+        ))}
+      </div>
+      {fleetSegments.length > 0 && s ? (
+        <div className="fleet-bar card" role="img" aria-label={`Fleet health: ${s.up} of ${s.total} online`}>
+          <span className="fleet-label">Fleet health</span>
+          <div className="fleet-track">
+            {fleetSegments.map((seg) => (
+              <span
+                key={seg.key}
+                className={`fleet-seg fleet-${seg.key}`}
+                style={{ width: `${(seg.count / s.total) * 100}%` }}
+                title={`${seg.label}: ${seg.count}/${s.total}`}
+              />
+            ))}
+          </div>
+          <span className="fleet-readout">
+            {Math.round((s.up / s.total) * 100)}% <em>online</em>
+          </span>
         </div>
-      ))}
-    </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1450,15 +1514,24 @@ function Dashboard() {
   }
   if (me.error) return <LoginPage />;
 
+  const up = summary.data?.up ?? 0;
+  const degraded = summary.data?.degraded ?? 0;
+  const down = summary.data?.down ?? 0;
+
   return (
     <main className="app-shell">
-      <header className="app-header">
-        <div className="header-copy">
-          <p className="eyebrow">Device Monitoring</p>
-          <h1>Operational dashboard</h1>
-          <p>Track device availability, response time, beat history, and state-change alerts.</p>
+      <header className="topbar">
+        <div className="brand">
+          <span className={`pulse-dot ${down > 0 ? 'pulse-down' : degraded > 0 ? 'pulse-degraded' : ''}`} aria-hidden="true" />
+          <h1>Device Monitoring</h1>
+          <span className="brand-sub">command center</span>
         </div>
-        <div className="header-actions">
+        <div className="topbar-status" aria-label="Fleet summary">
+          <span className="status-chip chip-up">{up} online</span>
+          {degraded > 0 ? <span className="status-chip chip-degraded">{degraded} degraded</span> : null}
+          {down > 0 ? <span className="status-chip chip-down">{down} down</span> : null}
+        </div>
+        <div className="topbar-actions">
           <span className="user-chip">{me.data?.user.username ?? 'Admin'}</span>
           <button className="ghost" type="button" disabled={logout.isPending} onClick={() => logout.mutate()}>
             Logout
