@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../src/db/database.js';
 import { createDevice } from '../src/devices/repository.js';
-import { createChannel, listEvents } from '../src/notifications/service.js';
+import { createChannel, getChannel, listEvents, updateChannel } from '../src/notifications/service.js';
 import { clampIntParam } from '../src/routes/params.js';
 
 const deviceInput = {
@@ -61,6 +61,45 @@ describe('notification events', () => {
     expect(events).toHaveLength(1);
     expect(events[0].channelId).toBeNull();
     expect(events[0].channelName).toBeNull();
+    db.close();
+  });
+});
+
+describe('updateChannel', () => {
+  it('merges partial config, keeping omitted secret keys', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const channel = createChannel(db, {
+      type: 'telegram',
+      name: 'TG',
+      enabled: true,
+      config: { botToken: 'secret-token', chatId: '111' }
+    });
+
+    updateChannel(db, channel.id, { config: { chatId: '222' } });
+
+    const updated = getChannel(db, channel.id, false);
+    expect(updated?.config.botToken).toBe('secret-token');
+    expect(updated?.config.chatId).toBe('222');
+    db.close();
+  });
+
+  it('updates name and enabled without touching config', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const channel = createChannel(db, {
+      type: 'discord',
+      name: 'Old name',
+      enabled: true,
+      config: { webhookUrl: 'https://discord.com/api/webhooks/1/abc' }
+    });
+
+    updateChannel(db, channel.id, { name: 'New name', enabled: false });
+
+    const updated = getChannel(db, channel.id, false);
+    expect(updated?.name).toBe('New name');
+    expect(updated?.enabled).toBe(false);
+    expect(updated?.config.webhookUrl).toBe('https://discord.com/api/webhooks/1/abc');
     db.close();
   });
 });

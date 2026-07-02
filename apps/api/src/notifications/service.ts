@@ -36,7 +36,14 @@ export function createChannel(db: Db, input: CreateNotificationChannelInput): No
 export function updateChannel(db: Db, id: number, input: UpdateNotificationChannelInput): NotificationChannel | null {
   const current = getChannel(db, id, false);
   if (!current) return null;
-  const next = { ...current, ...input, config: input.config ?? current.config };
+  // Merge config keys instead of replacing wholesale: secrets are write-only
+  // in the UI (list responses are redacted), so the client sends only the
+  // fields the user actually changed and omitted keys keep their stored value.
+  const next = {
+    ...current,
+    ...input,
+    config: input.config ? { ...current.config, ...input.config } : current.config
+  };
   db.prepare(
     `UPDATE notification_channels SET type = ?, name = ?, enabled = ?, config_json = ?, updated_at = ? WHERE id = ?`
   ).run(next.type, next.name, next.enabled ? 1 : 0, JSON.stringify(next.config), new Date().toISOString(), id);
