@@ -7,11 +7,12 @@ export async function registerDashboardRoutes(app: FastifyInstance, db: Db): Pro
       current_status: string;
       count: number;
     }>;
-    const counts = { total: 0, up: 0, down: 0, unknown: 0 };
+    const counts = { total: 0, up: 0, degraded: 0, down: 0, unknown: 0 };
     for (const row of rows) {
       const count = Number(row.count);
       counts.total += count;
       if (row.current_status === 'up') counts.up = count;
+      if (row.current_status === 'degraded') counts.degraded = count;
       if (row.current_status === 'down') counts.down = count;
       if (row.current_status === 'unknown') counts.unknown = count;
     }

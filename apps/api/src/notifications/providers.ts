@@ -16,6 +16,7 @@ export interface NotificationProvider {
 
 function statusEmoji(status: DeviceStatus): string {
   if (status === 'up') return '✅';
+  if (status === 'degraded') return '⚠️';
   if (status === 'down') return '🚨';
   return '❔';
 }
@@ -39,9 +40,9 @@ async function postJson(url: string, body: unknown): Promise<void> {
 
 function discordEmbed(payload: NotificationPayload): Record<string, unknown> {
   const { device, currentStatus, previousStatus, latencyMs, error, checkedAt } = payload;
-  const color = currentStatus === 'up' ? 0x34d399 : currentStatus === 'down' ? 0xfb7185 : 0xc4b5fd;
-  const icon = currentStatus === 'up' ? '✅' : currentStatus === 'down' ? '🚨' : '❔';
-  const label = (s: DeviceStatus) => (s === 'up' ? 'Online' : s === 'down' ? 'Offline' : 'Unknown');
+  const color = currentStatus === 'up' ? 0x34d399 : currentStatus === 'degraded' ? 0xfbbf24 : currentStatus === 'down' ? 0xfb7185 : 0xc4b5fd;
+  const icon = currentStatus === 'up' ? '✅' : currentStatus === 'degraded' ? '⚠️' : currentStatus === 'down' ? '🚨' : '❔';
+  const label = (s: DeviceStatus) => (s === 'up' ? 'Online' : s === 'degraded' ? 'Degraded' : s === 'down' ? 'Offline' : 'Unknown');
 
   const fields: { name: string; value: string; inline: boolean }[] = [
     { name: 'Host', value: `\`${device.host}\``, inline: true },

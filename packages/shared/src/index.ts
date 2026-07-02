@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const deviceStatusSchema = z.enum(['unknown', 'up', 'down']);
+export const deviceStatusSchema = z.enum(['unknown', 'up', 'degraded', 'down']);
 export type DeviceStatus = z.infer<typeof deviceStatusSchema>;
 
 export const checkTypeSchema = z.enum(['ping', 'http', 'tcp']);
@@ -22,6 +22,7 @@ export const deviceSchema = z.object({
   checkUrl: z.string().url().nullable(),
   checkPort: z.number().int().min(1).max(65535).nullable(),
   group: z.string().nullable(),
+  latencyThresholdMs: z.number().int().positive().nullable(),
   lastLatencyMs: z.number().int().nonnegative().nullable(),
   lastCheckedAt: z.string().datetime().nullable(),
   lastOnlineAt: z.string().datetime().nullable(),
@@ -37,6 +38,7 @@ export const createDeviceSchema = z.object({
   checkUrl: z.string().url().nullable().default(null),
   checkPort: z.number().int().min(1).max(65535).nullable().default(null),
   group: z.string().trim().max(60).nullable().default(null),
+  latencyThresholdMs: z.number().int().positive().nullable().default(null),
   intervalSeconds: z.number().int().min(10).max(86_400).default(60),
   timeoutMs: z.number().int().min(500).max(60_000).default(5_000),
   retries: z.number().int().min(0).max(10).default(1),
@@ -101,6 +103,7 @@ export type User = z.infer<typeof userSchema>;
 export const dashboardSummarySchema = z.object({
   total: z.number().int().nonnegative(),
   up: z.number().int().nonnegative(),
+  degraded: z.number().int().nonnegative(),
   down: z.number().int().nonnegative(),
   unknown: z.number().int().nonnegative(),
   recentEvents: z.array(

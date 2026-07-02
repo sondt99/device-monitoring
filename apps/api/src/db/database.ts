@@ -38,7 +38,7 @@ export function migrate(db: Db): void {
       timeout_ms INTEGER NOT NULL,
       retries INTEGER NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 1,
-      current_status TEXT NOT NULL DEFAULT 'unknown' CHECK (current_status IN ('unknown','up','down')),
+      current_status TEXT NOT NULL DEFAULT 'unknown' CHECK (current_status IN ('unknown','up','degraded','down')),
       last_latency_ms INTEGER,
       last_checked_at TEXT,
       last_online_at TEXT,
@@ -46,6 +46,7 @@ export function migrate(db: Db): void {
       check_url TEXT,
       check_port INTEGER,
       "group" TEXT,
+      latency_threshold_ms INTEGER,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
@@ -90,6 +91,7 @@ export function migrate(db: Db): void {
   addColumn(`ALTER TABLE devices ADD COLUMN check_url TEXT`);
   addColumn(`ALTER TABLE devices ADD COLUMN check_port INTEGER`);
   addColumn(`ALTER TABLE devices ADD COLUMN "group" TEXT`);
+  addColumn(`ALTER TABLE devices ADD COLUMN latency_threshold_ms INTEGER`);
 
   // Backfill last_online_at from existing beats for devices that were
   // online before this column was introduced.

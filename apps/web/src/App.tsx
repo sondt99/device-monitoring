@@ -7,6 +7,7 @@ import { api } from './api.js';
 
 const statusTone: Record<string, { label: string; hint: string }> = {
   up: { label: 'Online', hint: 'Responding normally' },
+  degraded: { label: 'Degraded', hint: 'High latency detected' },
   down: { label: 'Offline', hint: 'Needs attention' },
   unknown: { label: 'Unknown', hint: 'Waiting for first beat' }
 };
@@ -365,6 +366,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
   const [checkPort, setCheckPort] = useState<number | ''>(editing?.checkPort ?? '');
   const [group, setGroup] = useState(editing?.group ?? '');
   const [intervalSeconds, setIntervalSeconds] = useState(editing?.intervalSeconds ?? 60);
+  const [latencyThresholdMs, setLatencyThresholdMs] = useState<number | ''>(editing?.latencyThresholdMs ?? '');
   const [timeoutMs, setTimeoutMs] = useState(editing?.timeoutMs ?? 5000);
   const [retries, setRetries] = useState(editing?.retries ?? 1);
   const [enabled, setEnabled] = useState(editing?.enabled ?? true);
@@ -376,6 +378,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
     setCheckUrl(editing?.checkUrl ?? '');
     setCheckPort(editing?.checkPort ?? '');
     setGroup(editing?.group ?? '');
+    setLatencyThresholdMs(editing?.latencyThresholdMs ?? '');
     setIntervalSeconds(editing?.intervalSeconds ?? 60);
     setTimeoutMs(editing?.timeoutMs ?? 5000);
     setRetries(editing?.retries ?? 1);
@@ -387,9 +390,10 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
       const resolvedCheckUrl = checkType === 'http' ? checkUrl || null : null;
       const resolvedCheckPort = checkType === 'tcp' && checkPort ? Number(checkPort) : null;
       const resolvedGroup = group.trim() || null;
+      const resolvedThreshold = latencyThresholdMs ? Number(latencyThresholdMs) : null;
       return editing
-        ? api.updateDevice(editing.id, { name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, group: resolvedGroup, intervalSeconds, timeoutMs, retries, enabled })
-        : api.createDevice({ name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, group: resolvedGroup, intervalSeconds, timeoutMs, retries, enabled });
+        ? api.updateDevice(editing.id, { name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, group: resolvedGroup, latencyThresholdMs: resolvedThreshold, intervalSeconds, timeoutMs, retries, enabled })
+        : api.createDevice({ name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, group: resolvedGroup, latencyThresholdMs: resolvedThreshold, intervalSeconds, timeoutMs, retries, enabled });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['devices'] });
@@ -400,6 +404,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
         setCheckUrl('');
         setCheckPort('');
         setGroup('');
+        setLatencyThresholdMs('');
       }
       onDone?.();
     }
@@ -478,6 +483,15 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
       </Field>
       <Field label="Timeout" hint="Milliseconds">
         <input type="number" min={500} value={timeoutMs} onChange={(e) => setTimeoutMs(Number(e.target.value))} />
+      </Field>
+      <Field label="Latency alert" hint="ms — marks degraded if exceeded (optional)">
+        <input
+          type="number"
+          min={1}
+          placeholder="None"
+          value={latencyThresholdMs}
+          onChange={(e) => setLatencyThresholdMs(e.target.value === '' ? '' : Number(e.target.value))}
+        />
       </Field>
       <Field label="Retries" hint="Extra attempts before down">
         <input type="number" min={0} value={retries} onChange={(e) => setRetries(Number(e.target.value))} />
@@ -1052,6 +1066,7 @@ function StatCards() {
     () => [
       { key: 'total', label: 'Total', value: summary.data?.total ?? 0, caption: 'Configured devices' },
       { key: 'up', label: 'Online', value: summary.data?.up ?? 0, caption: 'Healthy right now' },
+      { key: 'degraded', label: 'Degraded', value: summary.data?.degraded ?? 0, caption: 'High latency' },
       { key: 'down', label: 'Offline', value: summary.data?.down ?? 0, caption: 'Needs attention' },
       { key: 'unknown', label: 'Unknown', value: summary.data?.unknown ?? 0, caption: 'Awaiting first beat' }
     ],
@@ -1142,6 +1157,7 @@ function StatusPage() {
 
   const overallLabel: Record<string, string> = {
     up: 'All systems operational',
+    degraded: 'Some systems experiencing high latency',
     down: 'Some systems are down',
     unknown: 'Checking system status…'
   };
@@ -1244,7 +1260,7 @@ export function App() {
   const queryClient = useQueryClient();
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => void queryClient.clear() });
   const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary, refetchInterval: 10_000, enabled: !me.error });
-  useLiveTitle(summary.data?.down ?? 0);
+  useLiveTitle((summary.data?.down ?? 0) + (summary.data?.degraded ?? 0));
 
   if (me.isLoading) {
     return (

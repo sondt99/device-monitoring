@@ -18,9 +18,9 @@ export async function registerStatusRoutes(app: FastifyInstance, db: Db): Promis
       };
     });
 
-    const counts: Record<DeviceStatus, number> = { up: 0, down: 0, unknown: 0 };
+    const counts: Record<DeviceStatus, number> = { up: 0, degraded: 0, down: 0, unknown: 0 };
     for (const d of devices) counts[d.currentStatus]++;
-    const overall: DeviceStatus = counts.down > 0 ? 'down' : counts.unknown > 0 ? 'unknown' : 'up';
+    const overall: DeviceStatus = counts.down > 0 ? 'down' : counts.degraded > 0 ? 'degraded' : counts.unknown > 0 ? 'unknown' : 'up';
 
     return { overall, counts, devices };
   });
