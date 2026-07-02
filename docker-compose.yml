@@ -14,6 +14,7 @@ services:
       COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET to at least 32 random characters}
       # Set SECURE_COOKIES=true only if serving over HTTPS (behind TLS terminator like nginx/Caddy)
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      BEAT_RETENTION_DAYS: ${BEAT_RETENTION_DAYS:-30}
       ADMIN_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME on first boot}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD to at least 12 characters on first boot}
     volumes:

@@ -46,10 +46,13 @@ export async function checkDevice(db: Db, checker: DeviceChecker, device: Device
 export class MonitoringScheduler {
   private readonly dueAt = new Map<number, number>();
   private timer: NodeJS.Timeout | null = null;
+  private nextCleanup = 0;
+  private static readonly CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
   constructor(
     private readonly db: Db,
     private readonly checker: DeviceChecker,
+    private readonly retentionDays: number = 30,
     private readonly tickMs = 1000
   ) {}
 
@@ -65,6 +68,12 @@ export class MonitoringScheduler {
 
   async tick(): Promise<void> {
     const now = Date.now();
+
+    if (now >= this.nextCleanup) {
+      this.nextCleanup = now + MonitoringScheduler.CLEANUP_INTERVAL_MS;
+      this.purgeOldData();
+    }
+
     const rows = this.db.prepare('SELECT * FROM devices WHERE enabled = 1').all() as Record<string, unknown>[];
     for (const row of rows) {
       const device = mapDevice(row);
@@ -73,5 +82,11 @@ export class MonitoringScheduler {
       this.dueAt.set(device.id, now + device.intervalSeconds * 1000);
       void checkDevice(this.db, this.checker, device);
     }
+  }
+
+  private purgeOldData(): void {
+    const cutoff = new Date(Date.now() - this.retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    this.db.prepare('DELETE FROM beats WHERE checked_at < ?').run(cutoff);
+    this.db.prepare('DELETE FROM notification_events WHERE created_at < ?').run(cutoff);
   }
 }

@@ -11,7 +11,7 @@ migrate(db);
 await bootstrapAdmin(db, config.ADMIN_USERNAME, config.ADMIN_PASSWORD);
 
 const app = await buildApp(db, config);
-const scheduler = new MonitoringScheduler(db, new MultiChecker());
+const scheduler = new MonitoringScheduler(db, new MultiChecker(), config.BEAT_RETENTION_DAYS);
 scheduler.start();
 
 const shutdown = async () => {
