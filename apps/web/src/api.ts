@@ -43,5 +43,10 @@ export const api = {
   updateChannel: (id: number, input: UpdateNotificationChannelInput) => request<{ channel: NotificationChannel }>(`/api/notification-channels/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteChannel: (id: number) => request<void>(`/api/notification-channels/${id}`, { method: 'DELETE' }),
   testChannel: (id: number) => request<{ ok: true }>(`/api/notification-channels/${id}/test`, { method: 'POST' }),
-  notificationEvents: () => request<{ events: NotificationEvent[] }>('/api/notification-events?limit=50')
+  notificationEvents: () => request<{ events: NotificationEvent[] }>('/api/notification-events?limit=50'),
+  publicStatus: () => request<{
+    overall: 'up' | 'down' | 'unknown';
+    counts: { up: number; down: number; unknown: number };
+    devices: { name: string; group: string | null; currentStatus: string; lastLatencyMs: number | null; lastCheckedAt: string | null; lastOnlineAt: string | null }[];
+  }>('/api/status')
 };

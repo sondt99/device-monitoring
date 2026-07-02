@@ -15,7 +15,11 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   STATIC_DIR: z.string().optional(),
-  BEAT_RETENTION_DAYS: z.coerce.number().int().min(1).default(30)
+  BEAT_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
+  ENABLE_STATUS_PAGE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true')
 });
 
 export type AppConfig = z.infer<typeof envSchema> & { databasePath: string; staticDir: string };

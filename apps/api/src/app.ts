@@ -12,6 +12,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerNotificationRoutes } from './routes/notifications.js';
+import { registerStatusRoutes } from './routes/status.js';
 
 export async function buildApp(db: Db, config: AppConfig) {
   const app = Fastify({ logger: { level: config.NODE_ENV === 'test' ? 'silent' : 'info' } });
@@ -31,9 +32,11 @@ export async function buildApp(db: Db, config: AppConfig) {
 
   app.get('/healthz', async () => ({ ok: true }));
   await registerAuthRoutes(app, db, config.SECURE_COOKIES);
+  if (config.ENABLE_STATUS_PAGE) await registerStatusRoutes(app, db);
 
   app.addHook('preHandler', async (request, reply) => {
     if (!request.url.startsWith('/api/') || request.url === '/api/auth/login') return;
+    if (config.ENABLE_STATUS_PAGE && request.url === '/api/status') return;
     await requireAuth(db)(request, reply);
   });
 
