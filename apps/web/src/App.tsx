@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType } from '@device-monitoring/shared';
 import { api } from './api.js';
@@ -121,6 +121,59 @@ function Field({
       {children}
       {hint ? <small>{hint}</small> : null}
     </label>
+  );
+}
+
+// ─── confirm dialog ──────────────────────────────────────────────────────────
+
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = 'Delete',
+  onConfirm,
+  onCancel
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    else if (!open && el.open) el.close();
+  }, [open]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    },
+    [onCancel]
+  );
+
+  if (!open) return null;
+
+  return (
+    <dialog ref={dialogRef} className="confirm-dialog" onKeyDown={handleKeyDown} onClick={onCancel}>
+      <div className="confirm-dialog-content" onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        <p>{description}</p>
+        <div className="confirm-dialog-actions">
+          <button className="ghost" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="primary danger" type="button" onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </dialog>
   );
 }
 
@@ -314,6 +367,17 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
   const [retries, setRetries] = useState(editing?.retries ?? 1);
   const [enabled, setEnabled] = useState(editing?.enabled ?? true);
 
+  useEffect(() => {
+    setName(editing?.name ?? '');
+    setHost(editing?.host ?? '');
+    setCheckType(editing?.checkType ?? 'ping');
+    setCheckUrl(editing?.checkUrl ?? '');
+    setIntervalSeconds(editing?.intervalSeconds ?? 60);
+    setTimeoutMs(editing?.timeoutMs ?? 5000);
+    setRetries(editing?.retries ?? 1);
+    setEnabled(editing?.enabled ?? true);
+  }, [editing?.id]);
+
   const mutation = useMutation({
     mutationFn: () => {
       const resolvedCheckUrl = checkType === 'http' ? checkUrl || null : null;
@@ -491,11 +555,14 @@ function DevicesPanel() {
   const queryClient = useQueryClient();
   const devices = useQuery({ queryKey: ['devices'], queryFn: api.devices, refetchInterval: 10_000 });
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [deletingDevice, setDeletingDevice] = useState<Device | null>(null);
   const selected = devices.data?.devices.find((d) => d.id === selectedId) ?? devices.data?.devices[0];
 
   const remove = useMutation({
     mutationFn: api.deleteDevice,
     onSuccess: () => {
+      setDeletingDevice(null);
       void queryClient.invalidateQueries({ queryKey: ['devices'] });
       void queryClient.invalidateQueries({ queryKey: ['summary'] });
     }
@@ -506,10 +573,24 @@ function DevicesPanel() {
       <div className="card">
         <SectionHeader
           eyebrow="Inventory"
-          title="Devices"
-          description="Add network devices, hosts, or appliances and define how often they should be checked."
+          title={editingDevice ? `Edit — ${editingDevice.name}` : 'Devices'}
+          description={
+            editingDevice
+              ? 'Update device settings and save.'
+              : 'Add network devices, hosts, or appliances and define how often they should be checked.'
+          }
+          action={
+            editingDevice ? (
+              <button className="ghost" type="button" onClick={() => setEditingDevice(null)}>
+                Cancel edit
+              </button>
+            ) : undefined
+          }
         />
-        <DeviceForm />
+        <DeviceForm
+          editing={editingDevice ?? undefined}
+          onDone={() => setEditingDevice(null)}
+        />
       </div>
 
       <div className="card table-card">
@@ -563,15 +644,26 @@ function DevicesPanel() {
                         <span className="disabled-dot">Paused</span>
                       )}
                     </td>
-                    <td>
+                    <td className="row-actions">
+                      <button
+                        className="ghost"
+                        type="button"
+                        aria-label={`Edit ${device.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingDevice(device);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                      >
+                        Edit
+                      </button>
                       <button
                         className="ghost danger"
                         type="button"
                         aria-label={`Delete ${device.name}`}
-                        disabled={remove.isPending}
                         onClick={(e) => {
                           e.stopPropagation();
-                          remove.mutate(device.id);
+                          setDeletingDevice(device);
                         }}
                       >
                         Delete
@@ -586,6 +678,16 @@ function DevicesPanel() {
       </div>
 
       {selected ? <DeviceDetail device={selected} /> : null}
+
+      <ConfirmDialog
+        open={deletingDevice !== null}
+        title={`Delete ${deletingDevice?.name ?? 'device'}?`}
+        description="This will permanently remove the device and all its beat history. This action cannot be undone."
+        onConfirm={() => {
+          if (deletingDevice) remove.mutate(deletingDevice.id);
+        }}
+        onCancel={() => setDeletingDevice(null)}
+      />
     </section>
   );
 }
@@ -676,6 +778,7 @@ function NotificationPanel() {
     webhookUrl: ''
   });
 
+  const [deletingChannel, setDeletingChannel] = useState<NotificationChannel | null>(null);
   const [testingId, setTestingId] = useState<number | null>(null);
   const [testResults, setTestResults] = useState<Record<number, { ok: boolean; message: string } | undefined>>({});
 
@@ -719,7 +822,10 @@ function NotificationPanel() {
 
   const remove = useMutation({
     mutationFn: api.deleteChannel,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    onSuccess: () => {
+      setDeletingChannel(null);
+      void queryClient.invalidateQueries({ queryKey: ['channels'] });
+    }
   });
 
   async function handleTest(id: number) {
@@ -830,7 +936,7 @@ function NotificationPanel() {
                     >
                       {isTesting ? 'Testing…' : 'Send test'}
                     </button>
-                    <button className="ghost danger" type="button" disabled={remove.isPending} onClick={() => remove.mutate(channel.id)}>
+                    <button className="ghost danger" type="button" disabled={remove.isPending} onClick={() => setDeletingChannel(channel)}>
                       Delete
                     </button>
                   </div>
@@ -840,6 +946,16 @@ function NotificationPanel() {
           })}
         </ul>
       ) : null}
+
+      <ConfirmDialog
+        open={deletingChannel !== null}
+        title={`Delete ${deletingChannel?.name ?? 'channel'}?`}
+        description="This will permanently remove the notification channel. Future alerts will no longer be delivered here."
+        onConfirm={() => {
+          if (deletingChannel) remove.mutate(deletingChannel.id);
+        }}
+        onCancel={() => setDeletingChannel(null)}
+      />
     </section>
   );
 }
