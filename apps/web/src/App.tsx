@@ -363,6 +363,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
   const [checkType, setCheckType] = useState<CheckType>(editing?.checkType ?? 'ping');
   const [checkUrl, setCheckUrl] = useState(editing?.checkUrl ?? '');
   const [checkPort, setCheckPort] = useState<number | ''>(editing?.checkPort ?? '');
+  const [group, setGroup] = useState(editing?.group ?? '');
   const [intervalSeconds, setIntervalSeconds] = useState(editing?.intervalSeconds ?? 60);
   const [timeoutMs, setTimeoutMs] = useState(editing?.timeoutMs ?? 5000);
   const [retries, setRetries] = useState(editing?.retries ?? 1);
@@ -374,6 +375,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
     setCheckType(editing?.checkType ?? 'ping');
     setCheckUrl(editing?.checkUrl ?? '');
     setCheckPort(editing?.checkPort ?? '');
+    setGroup(editing?.group ?? '');
     setIntervalSeconds(editing?.intervalSeconds ?? 60);
     setTimeoutMs(editing?.timeoutMs ?? 5000);
     setRetries(editing?.retries ?? 1);
@@ -384,9 +386,10 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
     mutationFn: () => {
       const resolvedCheckUrl = checkType === 'http' ? checkUrl || null : null;
       const resolvedCheckPort = checkType === 'tcp' && checkPort ? Number(checkPort) : null;
+      const resolvedGroup = group.trim() || null;
       return editing
-        ? api.updateDevice(editing.id, { name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, intervalSeconds, timeoutMs, retries, enabled })
-        : api.createDevice({ name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, intervalSeconds, timeoutMs, retries, enabled });
+        ? api.updateDevice(editing.id, { name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, group: resolvedGroup, intervalSeconds, timeoutMs, retries, enabled })
+        : api.createDevice({ name, host, checkType, checkUrl: resolvedCheckUrl, checkPort: resolvedCheckPort, group: resolvedGroup, intervalSeconds, timeoutMs, retries, enabled });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['devices'] });
@@ -396,6 +399,7 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
         setHost('');
         setCheckUrl('');
         setCheckPort('');
+        setGroup('');
       }
       onDone?.();
     }
@@ -411,6 +415,9 @@ function DeviceForm({ editing, onDone }: { editing?: Device; onDone?: () => void
     >
       <Field label="Device name" className="field-device-name">
         <input placeholder="Core router" value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <Field label="Group" hint="Optional — organize by location or role" className="field-group">
+        <input placeholder="Home lab, Production…" value={group} onChange={(e) => setGroup(e.target.value)} />
       </Field>
       <div className="field field-check-type">
         <span>Check type</span>
@@ -574,7 +581,22 @@ function DevicesPanel() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [deletingDevice, setDeletingDevice] = useState<Device | null>(null);
-  const selected = devices.data?.devices.find((d) => d.id === selectedId) ?? devices.data?.devices[0];
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+
+  const groups = useMemo(() => {
+    const set = new Set<string>();
+    for (const d of devices.data?.devices ?? []) {
+      if (d.group) set.add(d.group);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [devices.data]);
+
+  const filteredDevices = useMemo(() => {
+    if (!groupFilter) return devices.data?.devices ?? [];
+    return (devices.data?.devices ?? []).filter((d) => d.group === groupFilter);
+  }, [devices.data, groupFilter]);
+
+  const selected = filteredDevices.find((d) => d.id === selectedId) ?? filteredDevices[0];
 
   const remove = useMutation({
     mutationFn: api.deleteDevice,
@@ -611,7 +633,22 @@ function DevicesPanel() {
       </div>
 
       <div className="card table-card">
-        <SectionHeader title="Device inventory" description="Select a device to inspect its latest beat history." />
+        <SectionHeader
+          title="Device inventory"
+          description="Select a device to inspect its latest beat history."
+          action={
+            groups.length > 0 ? (
+              <div className="group-filter">
+                <select value={groupFilter ?? ''} onChange={(e) => setGroupFilter(e.target.value || null)}>
+                  <option value="">All groups</option>
+                  {groups.map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </div>
+            ) : undefined
+          }
+        />
         {devices.isLoading ? <LoadingBlock label="Loading devices…" /> : null}
         {!devices.isLoading && devices.data?.devices.length === 0 ? (
           <EmptyState title="No devices configured" description="Add your first router, NAS, server, or IoT device above." />
@@ -622,6 +659,7 @@ function DevicesPanel() {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Group</th>
                   <th>Host</th>
                   <th>Type</th>
                   <th>Status</th>
@@ -633,7 +671,7 @@ function DevicesPanel() {
                 </tr>
               </thead>
               <tbody>
-                {devices.data.devices.map((device) => (
+                {filteredDevices.map((device) => (
                   <tr
                     key={device.id}
                     className={selected?.id === device.id ? 'selected-row' : undefined}
@@ -642,6 +680,7 @@ function DevicesPanel() {
                     <td>
                       <strong>{device.name}</strong>
                     </td>
+                    <td className="muted-mono">{device.group ?? '—'}</td>
                     <td className="muted-mono">{device.host}</td>
                     <td>
                       <span className={`check-type-badge check-type-${device.checkType}`}>

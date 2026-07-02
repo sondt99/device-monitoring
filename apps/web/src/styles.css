@@ -1105,3 +1105,15 @@ tbody tr:last-child td {
   color: var(--danger);
   font-size: 0.82rem;
 }
+
+/* ─── group filter ──────────────────────────────────────────────────────────── */
+
+.group-filter select {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+}

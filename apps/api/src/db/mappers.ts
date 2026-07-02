@@ -22,6 +22,7 @@ export function mapDevice(row: Row): Device {
     checkType: String(row.check_type ?? 'ping') as CheckType,
     checkUrl: nullableIso(row.check_url),
     checkPort: row.check_port === null || row.check_port === undefined ? null : Number(row.check_port),
+    group: row.group === null || row.group === undefined ? null : String(row.group),
     currentStatus: String(row.current_status) as DeviceStatus,
     lastLatencyMs: row.last_latency_ms === null ? null : Number(row.last_latency_ms),
     lastCheckedAt: nullableIso(row.last_checked_at),
