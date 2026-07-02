@@ -364,11 +364,13 @@ code {
   margin-bottom: 1rem;
 }
 
-.recent-card .event-list {
+.recent-card .event-list,
+.notification-history-card .event-list {
   max-height: 440px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+  padding-right: 2px;
 }
 
 .stat {
