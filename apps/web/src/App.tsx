@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType, NotificationEvent } from '@device-monitoring/shared';
+import type { Beat, CheckType, DashboardSummary, Device, DeviceStatus, NotificationChannel, NotificationChannelType, NotificationEvent } from '@device-monitoring/shared';
 import { api } from './api.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -20,6 +20,29 @@ function formatDateTime(value?: string | null): string {
     hour: '2-digit',
     minute: '2-digit'
   }).format(new Date(value));
+}
+
+function formatDateTimeFull(value?: string | null): string {
+  if (!value) return 'Never';
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).format(new Date(value));
+}
+
+function timeAgo(value?: string | null): string {
+  if (!value) return 'Never';
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 45) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function formatLatency(value?: number | null): string {
@@ -175,6 +198,61 @@ function ConfirmDialog({
         </div>
       </div>
     </dialog>
+  );
+}
+
+// ─── detail modal ────────────────────────────────────────────────────────────
+
+function Modal({
+  open,
+  title,
+  onClose,
+  children
+}: {
+  open: boolean;
+  title: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    else if (!open && el.open) el.close();
+  }, [open]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    },
+    [onClose]
+  );
+
+  if (!open) return null;
+
+  return (
+    <dialog ref={dialogRef} className="confirm-dialog" onKeyDown={handleKeyDown} onClick={onClose}>
+      <div className="confirm-dialog-content detail-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="detail-modal-head">
+          <h3>{title}</h3>
+          <button className="ghost detail-close" type="button" aria-label="Close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </dialog>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="detail-row">
+      <span>{label}</span>
+      <div>{children}</div>
+    </div>
   );
 }
 
@@ -542,6 +620,7 @@ function DeviceDetail({ device }: { device: Device }) {
   const chronological = useMemo(() => (beats.data?.beats ?? []).slice().reverse(), [beats.data]);
   const stats = useMemo(() => calcStats(chronological), [chronological]);
   const timeline = chronological.slice(-60);
+  const [selectedBeat, setSelectedBeat] = useState<Beat | null>(null);
 
   const uptimeClass =
     stats.uptimePct === null ? '' : stats.uptimePct >= 99 ? 'value-up' : stats.uptimePct >= 95 ? 'value-warn' : 'value-down';
@@ -598,10 +677,13 @@ function DeviceDetail({ device }: { device: Device }) {
           <LatencyChart beats={chronological} deviceId={device.id} />
           <div className="timeline" aria-label={`Status timeline for ${device.name}`}>
             {timeline.map((beat) => (
-              <span
+              <button
                 key={beat.id}
+                type="button"
                 className={`beat beat-${beat.status}`}
                 title={`${formatDateTime(beat.checkedAt)} · ${formatLatency(beat.latencyMs)}${beat.error ? ` · ${beat.error}` : ''}`}
+                aria-label={`Beat at ${formatDateTime(beat.checkedAt)}, ${beat.status}`}
+                onClick={() => setSelectedBeat(beat)}
               />
             ))}
           </div>
@@ -609,6 +691,26 @@ function DeviceDetail({ device }: { device: Device }) {
       ) : null}
 
       <UptimeHeatmap deviceId={device.id} />
+
+      <Modal open={selectedBeat !== null} title="Beat detail" onClose={() => setSelectedBeat(null)}>
+        {selectedBeat ? (
+          <div className="detail-rows">
+            <DetailRow label="Device">
+              <strong>{device.name}</strong>
+            </DetailRow>
+            <DetailRow label="Status">
+              <StatusBadge status={selectedBeat.status} />
+            </DetailRow>
+            <DetailRow label="Checked at">{formatDateTimeFull(selectedBeat.checkedAt)}</DetailRow>
+            <DetailRow label="Latency">{formatLatency(selectedBeat.latencyMs)}</DetailRow>
+            {selectedBeat.error ? (
+              <DetailRow label="Error">
+                <pre className="detail-error">{selectedBeat.error}</pre>
+              </DetailRow>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </section>
   );
 }
@@ -1088,12 +1190,15 @@ function StatCards() {
 
 // ─── recent beats (compact sidebar) ──────────────────────────────────────────
 
+type RecentEvent = DashboardSummary['recentEvents'][number];
+
 function RecentBeats() {
   const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary, refetchInterval: 10_000 });
+  const [selected, setSelected] = useState<RecentEvent | null>(null);
 
   return (
     <div className="card recent-card">
-      <SectionHeader eyebrow="Activity" title="Recent beats" />
+      <SectionHeader eyebrow="Activity" title="Recent beats" description="Click an entry for full details." />
       {summary.isLoading ? <LoadingBlock label="Loading…" /> : null}
       {!summary.isLoading && summary.data?.recentEvents.length === 0 ? (
         <EmptyState title="No events yet" description="Events appear after the scheduler records checks." />
@@ -1101,17 +1206,50 @@ function RecentBeats() {
       {summary.data && summary.data.recentEvents.length > 0 ? (
         <ul className="event-list">
           {summary.data.recentEvents.map((event) => (
-            <li key={`${event.deviceId}-${event.checkedAt}`}>
+            <li
+              key={`${event.deviceId}-${event.checkedAt}`}
+              className="clickable"
+              role="button"
+              tabIndex={0}
+              aria-label={`View details for ${event.deviceName}`}
+              onClick={() => setSelected(event)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelected(event);
+                }
+              }}
+            >
               <StatusBadge status={event.status} />
               <div>
                 <strong>{event.deviceName}</strong>
-                <span>{formatDateTime(event.checkedAt)}</span>
+                <span title={formatDateTimeFull(event.checkedAt)}>{timeAgo(event.checkedAt)}</span>
               </div>
               <em>{event.error ?? formatLatency(event.latencyMs)}</em>
             </li>
           ))}
         </ul>
       ) : null}
+
+      <Modal open={selected !== null} title="Beat detail" onClose={() => setSelected(null)}>
+        {selected ? (
+          <div className="detail-rows">
+            <DetailRow label="Device">
+              <strong>{selected.deviceName}</strong>
+            </DetailRow>
+            <DetailRow label="Status">
+              <StatusBadge status={selected.status} />
+            </DetailRow>
+            <DetailRow label="Checked at">{formatDateTimeFull(selected.checkedAt)}</DetailRow>
+            <DetailRow label="Latency">{formatLatency(selected.latencyMs)}</DetailRow>
+            {selected.error ? (
+              <DetailRow label="Error">
+                <pre className="detail-error">{selected.error}</pre>
+              </DetailRow>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -1120,10 +1258,13 @@ function RecentBeats() {
 
 function NotificationHistory() {
   const events = useQuery({ queryKey: ['notification-events'], queryFn: api.notificationEvents, refetchInterval: 30_000 });
+  const [selected, setSelected] = useState<NotificationEvent | null>(null);
+
+  const prettyTransition = (t: string) => t.replace('->', ' → ');
 
   return (
     <div className="card notification-history-card">
-      <SectionHeader eyebrow="Delivery log" title="Notification history" />
+      <SectionHeader eyebrow="Delivery log" title="Notification history" description="Click an entry for full delivery details." />
       {events.isLoading ? <LoadingBlock label="Loading…" /> : null}
       {!events.isLoading && events.data?.events.length === 0 ? (
         <EmptyState title="No deliveries yet" description="Notification events appear when device status changes trigger alerts." />
@@ -1131,14 +1272,27 @@ function NotificationHistory() {
       {events.data && events.data.events.length > 0 ? (
         <ul className="event-list notification-event-list">
           {events.data.events.map((event: NotificationEvent) => (
-            <li key={event.id}>
+            <li
+              key={event.id}
+              className="clickable"
+              role="button"
+              tabIndex={0}
+              aria-label={`View delivery details for ${event.deviceName || `device ${event.deviceId}`}`}
+              onClick={() => setSelected(event)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelected(event);
+                }
+              }}
+            >
               <span className={`notif-status ${event.success ? 'notif-ok' : 'notif-fail'}`}>
                 {event.success ? 'Sent' : 'Failed'}
               </span>
               <div>
                 <strong>{event.deviceName || `Device #${event.deviceId}`}</strong>
-                <span>
-                  {event.channelName ?? 'Deleted channel'} &middot; {event.transition} &middot; {formatDateTime(event.createdAt)}
+                <span title={formatDateTimeFull(event.createdAt)}>
+                  {event.channelName ?? 'Deleted channel'} &middot; {prettyTransition(event.transition)} &middot; {timeAgo(event.createdAt)}
                 </span>
               </div>
               {event.error ? <em className="notif-error">{event.error}</em> : null}
@@ -1146,6 +1300,29 @@ function NotificationHistory() {
           ))}
         </ul>
       ) : null}
+
+      <Modal open={selected !== null} title="Delivery detail" onClose={() => setSelected(null)}>
+        {selected ? (
+          <div className="detail-rows">
+            <DetailRow label="Result">
+              <span className={`notif-status ${selected.success ? 'notif-ok' : 'notif-fail'}`}>
+                {selected.success ? 'Sent' : 'Failed'}
+              </span>
+            </DetailRow>
+            <DetailRow label="Device">
+              <strong>{selected.deviceName || `Device #${selected.deviceId}`}</strong>
+            </DetailRow>
+            <DetailRow label="Channel">{selected.channelName ?? 'Deleted channel'}</DetailRow>
+            <DetailRow label="Transition">{prettyTransition(selected.transition)}</DetailRow>
+            <DetailRow label="Sent at">{formatDateTimeFull(selected.createdAt)}</DetailRow>
+            {selected.error ? (
+              <DetailRow label="Error">
+                <pre className="detail-error">{selected.error}</pre>
+              </DetailRow>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
