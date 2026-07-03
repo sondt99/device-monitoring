@@ -30,6 +30,16 @@ elif grep -q '^SECRET_ENCRYPTION_KEY=$' .env; then
   echo "==> generated missing SECRET_ENCRYPTION_KEY in .env (keep it stable from now on)" >&2
 fi
 
+# docker compose treats a raw '$' inside .env values as a variable reference
+# and silently replaces it with an empty string, mangling the value.
+# Escaped '$$' pairs are stripped before checking so they don't false-alarm.
+RAW_DOLLAR_LINES="$(awk -F= 'NF>1 && $0 !~ /^[ \t]*#/ { v=$0; gsub(/\$\$/,"",v); if (v ~ /\$/) printf "%d ", NR }' .env)"
+if [ -n "$RAW_DOLLAR_LINES" ]; then
+  echo "WARNING: .env line(s) $RAW_DOLLAR_LINES contain a raw '\$' — docker compose" >&2
+  echo "         treats it as a variable reference and blanks it out, mangling the" >&2
+  echo "         value. Escape each '\$' as '\$\$', or use a value without '\$'." >&2
+fi
+
 # Fall back to sudo automatically when the current user can't reach the
 # Docker socket (i.e. isn't in the `docker` group).
 USE_SUDO=""

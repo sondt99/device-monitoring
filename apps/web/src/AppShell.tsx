@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Footer } from './components/index.js';
 import { useMe } from './auth/useMe.js';
 import { useLiveTitle } from './lib/useLiveTitle.js';
 import { useTheme } from './lib/useTheme.js';
@@ -81,6 +82,7 @@ export function AppShell() {
       </nav>
 
       <Outlet />
+      <Footer />
     </main>
   );
 }

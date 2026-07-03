@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Field } from '../components/index.js';
+import { Link, useNavigate } from 'react-router-dom';
+import { Field, Footer } from '../components/index.js';
 import { api } from '../api.js';
 
 export function LoginPage() {
@@ -58,8 +58,12 @@ export function LoginPage() {
           <button className="primary full-width" type="submit" disabled={login.isPending}>
             {login.isPending ? 'Signing in…' : 'Sign in'}
           </button>
+          <p className="login-status-link">
+            Just checking if things are up? <Link to="/status">View the public status page →</Link>
+          </p>
         </form>
       </section>
+      <Footer />
     </main>
   );
 }

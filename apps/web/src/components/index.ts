@@ -6,3 +6,4 @@ export * from './Field.js';
 export * from './ConfirmDialog.js';
 export * from './Modal.js';
 export * from './DetailRow.js';
+export * from './Footer.js';

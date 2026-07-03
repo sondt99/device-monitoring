@@ -76,7 +76,10 @@ export function StatusPage() {
       ))}
 
       <footer className="status-footer">
-        Updated every 15 seconds &middot; Powered by Device Monitoring
+        Updated every 15 seconds &middot; Powered by{' '}
+        <a href="https://github.com/sondt99/device-monitoring" target="_blank" rel="noreferrer">
+          Device Monitoring
+        </a>
       </footer>
     </main>
   );
