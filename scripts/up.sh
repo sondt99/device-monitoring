@@ -10,6 +10,20 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Fall back to sudo automatically when the current user can't reach the
+# Docker socket (i.e. isn't in the `docker` group).
+USE_SUDO=""
+if ! docker info >/dev/null 2>&1; then
+  echo "==> current user can't reach the Docker socket — retrying with sudo." >&2
+  echo "    (permanent fix: sudo usermod -aG docker $USER, then log out and back in)" >&2
+  if sudo docker info >/dev/null 2>&1; then
+    USE_SUDO="1"
+  else
+    echo "error: Docker daemon unreachable even with sudo — is it running?" >&2
+    exit 1
+  fi
+fi
+
 START_PORT="${APP_PORT_START:-3000}"
 END_PORT="${APP_PORT_END:-3100}"
 
@@ -39,4 +53,8 @@ if [ -z "$APP_PORT" ]; then
 fi
 
 echo "==> starting device-monitoring on http://localhost:$APP_PORT"
+if [ -n "$USE_SUDO" ]; then
+  # `sudo VAR=value cmd` keeps the variable despite sudo's env_reset.
+  exec sudo APP_PORT="$APP_PORT" docker compose up "$@"
+fi
 APP_PORT="$APP_PORT" exec docker compose up "$@"
