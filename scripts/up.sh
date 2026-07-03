@@ -10,6 +10,26 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+gen_secret() { openssl rand -base64 32; }
+
+# First-run bootstrap: on a fresh machine .env doesn't exist (it's
+# gitignored). Create it from .env.example with generated secrets so the
+# stack starts without manual editing.
+if [ ! -f .env ]; then
+  cp .env.example .env
+  ADMIN_PW="$(gen_secret)"
+  sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$ADMIN_PW|" .env
+  sed -i "s|^COOKIE_SECRET=.*|COOKIE_SECRET=$(gen_secret)|" .env
+  sed -i "s|^SECRET_ENCRYPTION_KEY=.*|SECRET_ENCRYPTION_KEY=$(gen_secret)|" .env
+  echo "==> no .env found — created one from .env.example with generated secrets" >&2
+  echo "    first-boot admin login:  username: admin   password: $ADMIN_PW" >&2
+  echo "    (save that password now, or edit .env before this first start)" >&2
+elif grep -q '^SECRET_ENCRYPTION_KEY=$' .env; then
+  # Existing .env from before encryption was introduced: fill in the key.
+  sed -i "s|^SECRET_ENCRYPTION_KEY=$|SECRET_ENCRYPTION_KEY=$(gen_secret)|" .env
+  echo "==> generated missing SECRET_ENCRYPTION_KEY in .env (keep it stable from now on)" >&2
+fi
+
 # Fall back to sudo automatically when the current user can't reach the
 # Docker socket (i.e. isn't in the `docker` group).
 USE_SUDO=""
