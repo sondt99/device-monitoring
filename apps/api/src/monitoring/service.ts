@@ -48,8 +48,39 @@ function resolveStatus(result: CheckResult, device: DegradationInputs): DeviceSt
   return degradedReason(result, device) ? 'degraded' : 'up';
 }
 
-export async function checkDevice(db: Db, checker: DeviceChecker, device: Device): Promise<void> {
-  const result = await checker.check({ host: device.host, checkType: device.checkType, checkUrl: device.checkUrl, checkPort: device.checkPort, timeoutMs: device.timeoutMs, retries: device.retries });
+const DOWN_CONFIRMATION_ATTEMPTS = 3;
+const DOWN_CONFIRMATION_DELAY_MS = 2_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export interface DownConfirmation {
+  attempts: number;
+  delayMs: number;
+}
+
+export async function checkDevice(
+  db: Db,
+  checker: DeviceChecker,
+  device: Device,
+  confirm: DownConfirmation = { attempts: DOWN_CONFIRMATION_ATTEMPTS, delayMs: DOWN_CONFIRMATION_DELAY_MS }
+): Promise<void> {
+  const target = { host: device.host, checkType: device.checkType, checkUrl: device.checkUrl, checkPort: device.checkPort, timeoutMs: device.timeoutMs, retries: device.retries };
+  let result = await checker.check(target);
+
+  // Anti-flap: a device that isn't already down is never marked down from a
+  // single failed check. Re-check silently in quick succession (much faster
+  // than the regular interval); one success cancels the down verdict, and
+  // only if every confirmation also fails do we record/notify the outage.
+  // The intermediate probes are not recorded as beats.
+  if (result.status === 'down' && device.currentStatus !== 'down' && confirm.attempts > 0) {
+    for (let attempt = 0; attempt < confirm.attempts; attempt += 1) {
+      if (confirm.delayMs > 0) await sleep(confirm.delayMs);
+      const recheck = await checker.check(target);
+      result = recheck;
+      if (recheck.status === 'up') break;
+    }
+  }
+
   const effectiveStatus = resolveStatus(result, device);
   // Beats store the raw reachability outcome (up/down); "degraded" only exists
   // at the device level, derived from latency/TLS-expiry vs threshold. Uptime
@@ -75,6 +106,7 @@ export async function checkDevice(db: Db, checker: DeviceChecker, device: Device
 
 export class MonitoringScheduler {
   private readonly dueAt = new Map<number, number>();
+  private readonly inFlight = new Set<number>();
   private timer: NodeJS.Timeout | null = null;
   private nextCleanup = 0;
   private static readonly CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
@@ -108,11 +140,16 @@ export class MonitoringScheduler {
     for (const row of rows) {
       const device = mapDevice(row);
       const due = this.dueAt.get(device.id) ?? 0;
-      if (now < due) continue;
+      // Down-confirmation re-checks can outlast short intervals — never let a
+      // device's next scheduled check start while the previous one is running.
+      if (now < due || this.inFlight.has(device.id)) continue;
       this.dueAt.set(device.id, now + device.intervalSeconds * 1000);
-      checkDevice(this.db, this.checker, device).catch((error) => {
-        console.error(`Check failed for device ${device.id} (${device.name}):`, error);
-      });
+      this.inFlight.add(device.id);
+      checkDevice(this.db, this.checker, device)
+        .catch((error) => {
+          console.error(`Check failed for device ${device.id} (${device.name}):`, error);
+        })
+        .finally(() => this.inFlight.delete(device.id));
     }
   }
 

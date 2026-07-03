@@ -9,6 +9,7 @@ Device Monitoring is a lightweight, self-hosted uptime monitor for devices on yo
 - HttpOnly session cookies and CSRF header protection for mutating API calls.
 - Device inventory with host/IP, interval, timeout, retry count, and enabled flag.
 - Ping, HTTP, TCP, DNS-resolution, and TLS-certificate-expiry checks, with beat history and latency tracking.
+- Flap protection: a reachable device is only declared down after 3 rapid silent re-checks (2 s apart) all fail — one success cancels the alert.
 - State-transition alerts for `up -> down`, `down -> up`, degraded (latency/cert-expiry threshold), and first known state.
 - Maintenance windows per device that suppress alert noise (beats still recorded) and an on-demand incident timeline.
 - Notification channels for Discord webhooks, Telegram bots, and generic webhooks, with secrets encrypted at rest (AES-256-GCM).

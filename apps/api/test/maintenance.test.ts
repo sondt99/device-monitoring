@@ -125,7 +125,7 @@ describe('maintenance suppression in checkDevice', () => {
       null
     );
 
-    await checkDevice(db, { check: async () => ({ status: 'down', latencyMs: null, error: 'timeout' }) }, device);
+    await checkDevice(db, { check: async () => ({ status: 'down', latencyMs: null, error: 'timeout' }) }, device, { attempts: 0, delayMs: 0 });
 
     expect(getDevice(db, device.id)?.currentStatus).toBe('down');
     const beatCount = (db.prepare('SELECT COUNT(*) AS c FROM beats WHERE device_id = ?').get(device.id) as { c: number }).c;
@@ -145,7 +145,7 @@ describe('maintenance suppression in checkDevice', () => {
       null
     );
 
-    await checkDevice(db, { check: async () => ({ status: 'down', latencyMs: null, error: 'timeout' }) }, device);
+    await checkDevice(db, { check: async () => ({ status: 'down', latencyMs: null, error: 'timeout' }) }, device, { attempts: 0, delayMs: 0 });
 
     expect(notifyTransition).toHaveBeenCalledTimes(1);
     db.close();

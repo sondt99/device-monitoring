@@ -146,3 +146,113 @@ describe('monitoring service', () => {
     db.close();
   });
 });
+
+describe('down confirmation (anti-flap)', () => {
+  const FAST_CONFIRM = { attempts: 3, delayMs: 0 };
+
+  async function upDevice(db: ReturnType<typeof openDatabase>) {
+    const device = createDevice(db, baseInput);
+    await checkDevice(db, { check: async () => ({ status: 'up', latencyMs: 5, error: null }) }, device);
+    return getDevice(db, device.id)!;
+  }
+
+  it('does not mark an up device down on a transient blip', async () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    vi.mocked(notifyTransition).mockClear();
+    const device = await upDevice(db);
+
+    let calls = 0;
+    const flaky = {
+      check: async () => {
+        calls += 1;
+        return calls === 1
+          ? { status: 'down' as const, latencyMs: null, error: 'blip' }
+          : { status: 'up' as const, latencyMs: 8, error: null };
+      }
+    };
+    await checkDevice(db, flaky, device, FAST_CONFIRM);
+
+    expect(calls).toBe(2); // primary check + one silent confirmation that succeeded
+    expect(getDevice(db, device.id)?.currentStatus).toBe('up');
+    const lastBeat = db.prepare('SELECT status FROM beats WHERE device_id = ? ORDER BY id DESC LIMIT 1').get(device.id) as { status: string };
+    expect(lastBeat.status).toBe('up');
+    // Only the initial unknown->up notification, nothing for the blip.
+    expect(notifyTransition).toHaveBeenCalledTimes(1);
+    db.close();
+  });
+
+  it('marks down and notifies only after every confirmation fails', async () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    vi.mocked(notifyTransition).mockClear();
+    const device = await upDevice(db);
+
+    let calls = 0;
+    const dead = {
+      check: async () => {
+        calls += 1;
+        return { status: 'down' as const, latencyMs: null, error: 'timeout' };
+      }
+    };
+    await checkDevice(db, dead, device, FAST_CONFIRM);
+
+    expect(calls).toBe(4); // primary check + 3 confirmations
+    expect(getDevice(db, device.id)?.currentStatus).toBe('down');
+    expect(notifyTransition).toHaveBeenCalledTimes(2); // unknown->up, then up->down
+    expect(notifyTransition).toHaveBeenLastCalledWith(
+      db,
+      expect.objectContaining({ previousStatus: 'up', currentStatus: 'down' })
+    );
+    // The silent confirmation probes must not create extra beats.
+    const beatCount = (db.prepare('SELECT COUNT(*) AS c FROM beats WHERE device_id = ?').get(device.id) as { c: number }).c;
+    expect(beatCount).toBe(2);
+    db.close();
+  });
+
+  it('skips confirmations entirely when the device is already down', async () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const device = createDevice(db, baseInput);
+    await checkDevice(db, { check: async () => ({ status: 'down', latencyMs: null, error: 'timeout' }) }, device, { attempts: 0, delayMs: 0 });
+    const downDevice = getDevice(db, device.id)!;
+    expect(downDevice.currentStatus).toBe('down');
+
+    let calls = 0;
+    const dead = {
+      check: async () => {
+        calls += 1;
+        return { status: 'down' as const, latencyMs: null, error: 'timeout' };
+      }
+    };
+    await checkDevice(db, dead, downDevice, FAST_CONFIRM);
+
+    expect(calls).toBe(1); // no re-checks: the outage is already known
+    db.close();
+  });
+
+  it('confirms before the very first known state too (unknown -> down)', async () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    vi.mocked(notifyTransition).mockClear();
+    const device = createDevice(db, baseInput);
+
+    let calls = 0;
+    const flaky = {
+      check: async () => {
+        calls += 1;
+        return calls === 1
+          ? { status: 'down' as const, latencyMs: null, error: 'blip' }
+          : { status: 'up' as const, latencyMs: 8, error: null };
+      }
+    };
+    await checkDevice(db, flaky, device, FAST_CONFIRM);
+
+    expect(getDevice(db, device.id)?.currentStatus).toBe('up');
+    expect(notifyTransition).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ previousStatus: 'unknown', currentStatus: 'up' })
+    );
+    db.close();
+  });
+});
