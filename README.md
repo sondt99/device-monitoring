@@ -40,10 +40,12 @@ SECRET_ENCRYPTION_KEY=a-base64-encoded-32-byte-key
 Start the app:
 
 ```bash
-docker compose up --build
+./scripts/up.sh --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with the admin credentials. The first admin user is created only when the database has no users. There is no default password.
+The script finds the first free host port in 3000–3100 (so a busy port 3000 never blocks startup — listeners from any process are detected, including containers started with `sudo docker`) and prints the URL it chose. Plain `docker compose up --build` still works and binds port 3000, or a specific port with `APP_PORT=3005 docker compose up --build`.
+
+Open the printed URL (default [http://localhost:3000](http://localhost:3000)) and sign in with the admin credentials. The first admin user is created only when the database has no users. There is no default password.
 
 ## Development
 

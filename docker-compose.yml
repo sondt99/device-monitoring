@@ -4,7 +4,9 @@ services:
     image: device-monitoring:local
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Host port is overridable; scripts/up.sh picks the first free port
+      # in 3000-3100 automatically when 3000 is taken.
+      - "${APP_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
