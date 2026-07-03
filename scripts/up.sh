@@ -52,8 +52,13 @@ if [ -z "$APP_PORT" ]; then
   exit 1
 fi
 
-echo "==> starting device-monitoring on http://localhost:$APP_PORT"
-echo "    (host port $APP_PORT is mapped to port 3000 inside the container —"
+LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+echo "==> starting device-monitoring (bound to 0.0.0.0 — reachable from the LAN):"
+echo "      local:   http://localhost:$APP_PORT"
+if [ -n "$LAN_IP" ]; then
+  echo "      network: http://$LAN_IP:$APP_PORT"
+fi
+echo "    (host port $APP_PORT maps to port 3000 inside the container —"
 echo "     the app's own logs will always say 3000; that is expected)"
 if [ -n "$USE_SUDO" ]; then
   # `sudo VAR=value cmd` keeps the variable despite sudo's env_reset.

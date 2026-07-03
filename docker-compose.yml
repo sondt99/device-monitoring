@@ -5,8 +5,10 @@ services:
     restart: unless-stopped
     ports:
       # Host port is overridable; scripts/up.sh picks the first free port
-      # in 3000-3100 automatically when 3000 is taken.
-      - "${APP_PORT:-3000}:3000"
+      # in 3000-3100 automatically when 3000 is taken. Bound to 0.0.0.0
+      # explicitly so the app is reachable from the LAN regardless of the
+      # Docker daemon's default bind address.
+      - "0.0.0.0:${APP_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
