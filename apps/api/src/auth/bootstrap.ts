@@ -11,5 +11,5 @@ export async function bootstrapAdmin(db: Db, username?: string, password?: strin
     throw new Error('ADMIN_PASSWORD must be at least 12 characters long');
   }
   const passwordHash = await hashPassword(password);
-  db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(username, passwordHash);
+  db.prepare(`INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')`).run(username, passwordHash);
 }

@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { nanoid } from 'nanoid';
+import type { UserRole } from '@device-monitoring/shared';
 import type { Db } from '../db/database.js';
 import { mapUser } from '../db/mappers.js';
 
@@ -20,7 +21,7 @@ export function destroySession(db: Db, sessionId: string): void {
 export function getSessionUser(db: Db, sessionId: string): ReturnType<typeof mapUser> | null {
   const row = db
     .prepare(
-      `SELECT users.id, users.username, users.created_at
+      `SELECT users.id, users.username, users.role, users.created_at
        FROM sessions JOIN users ON users.id = sessions.user_id
        WHERE sessions.id = ? AND sessions.expires_at > ?`
     )
@@ -55,5 +56,13 @@ export function requireAuth(db: Db) {
       return;
     }
     request.user = user;
+  };
+}
+
+export function requireRole(role: UserRole) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    if (request.user?.role !== role) {
+      await reply.code(403).send({ error: 'Forbidden' });
+    }
   };
 }

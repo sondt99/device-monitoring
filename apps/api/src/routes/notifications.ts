@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { createNotificationChannelSchema, updateNotificationChannelSchema } from '@device-monitoring/shared';
+import { requireRole } from '../auth/sessions.js';
 import type { Db } from '../db/database.js';
 import { createChannel, deleteChannel, getChannel, listChannels, listEvents, sendToChannel, updateChannel } from '../notifications/service.js';
 import { clampIntParam } from './params.js';
 
 export async function registerNotificationRoutes(app: FastifyInstance, db: Db): Promise<void> {
+  const adminOnly = { preHandler: requireRole('admin') };
+
   app.get('/api/notification-channels', async () => ({ channels: listChannels(db) }));
 
   app.get('/api/notification-events', async (request) => {
@@ -12,25 +15,25 @@ export async function registerNotificationRoutes(app: FastifyInstance, db: Db): 
     return { events: listEvents(db, limit) };
   });
 
-  app.post('/api/notification-channels', async (request, reply) => {
+  app.post('/api/notification-channels', adminOnly, async (request, reply) => {
     const channel = createChannel(db, createNotificationChannelSchema.parse(request.body));
     return reply.code(201).send({ channel });
   });
 
-  app.patch('/api/notification-channels/:id', async (request, reply) => {
+  app.patch('/api/notification-channels/:id', adminOnly, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const channel = updateChannel(db, id, updateNotificationChannelSchema.parse(request.body));
     if (!channel) return reply.code(404).send({ error: 'Notification channel not found' });
     return { channel };
   });
 
-  app.delete('/api/notification-channels/:id', async (request, reply) => {
+  app.delete('/api/notification-channels/:id', adminOnly, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     if (!deleteChannel(db, id)) return reply.code(404).send({ error: 'Notification channel not found' });
     return reply.code(204).send();
   });
 
-  app.post('/api/notification-channels/:id/test', async (request, reply) => {
+  app.post('/api/notification-channels/:id/test', adminOnly, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const channel = getChannel(db, id, false);
     if (!channel) return reply.code(404).send({ error: 'Notification channel not found' });

@@ -12,10 +12,14 @@ services:
       DATABASE_PATH: /data/device-monitoring.sqlite
       STATIC_DIR: /app/public
       COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET to at least 32 random characters}
+      # Encrypts notification-channel secrets at rest. Generate with: openssl rand -base64 32
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY — generate with `openssl rand -base64 32`}
       # Set SECURE_COOKIES=true only if serving over HTTPS (behind TLS terminator like nginx/Caddy)
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
       BEAT_RETENTION_DAYS: ${BEAT_RETENTION_DAYS:-30}
       ENABLE_STATUS_PAGE: ${ENABLE_STATUS_PAGE:-false}
+      ENABLE_METRICS: ${ENABLE_METRICS:-false}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME on first boot}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD to at least 12 characters on first boot}
     volumes:

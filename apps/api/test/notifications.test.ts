@@ -12,6 +12,7 @@ const deviceInput = {
   checkPort: null,
   group: null,
   latencyThresholdMs: null,
+  tlsExpiryWarnDays: null,
   intervalSeconds: 60,
   timeoutMs: 5000,
   retries: 1,

@@ -1,13 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { createDeviceSchema, updateDeviceSchema } from '@device-monitoring/shared';
+import { requireRole } from '../auth/sessions.js';
 import type { Db } from '../db/database.js';
-import { createDevice, deleteDevice, getDevice, getUptimeReport, listBeats, listDevices, updateDevice } from '../devices/repository.js';
+import { createDevice, deleteDevice, getDevice, getIncidentTimeline, getUptimeReport, listBeats, listDevices, updateDevice } from '../devices/repository.js';
 import { clampIntParam } from './params.js';
 
 export async function registerDeviceRoutes(app: FastifyInstance, db: Db): Promise<void> {
+  const adminOnly = { preHandler: requireRole('admin') };
+
   app.get('/api/devices', async () => ({ devices: listDevices(db) }));
 
-  app.post('/api/devices', async (request, reply) => {
+  app.post('/api/devices', adminOnly, async (request, reply) => {
     const device = createDevice(db, createDeviceSchema.parse(request.body));
     return reply.code(201).send({ device });
   });
@@ -19,14 +22,14 @@ export async function registerDeviceRoutes(app: FastifyInstance, db: Db): Promis
     return { device };
   });
 
-  app.patch('/api/devices/:id', async (request, reply) => {
+  app.patch('/api/devices/:id', adminOnly, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const device = updateDevice(db, id, updateDeviceSchema.parse(request.body));
     if (!device) return reply.code(404).send({ error: 'Device not found' });
     return { device };
   });
 
-  app.delete('/api/devices/:id', async (request, reply) => {
+  app.delete('/api/devices/:id', adminOnly, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     if (!deleteDevice(db, id)) return reply.code(404).send({ error: 'Device not found' });
     return reply.code(204).send();
@@ -44,5 +47,12 @@ export async function registerDeviceRoutes(app: FastifyInstance, db: Db): Promis
     if (!getDevice(db, id)) return reply.code(404).send({ error: 'Device not found' });
     const days = clampIntParam((request.query as { days?: string }).days, 30, 1, 365);
     return { uptime: getUptimeReport(db, id, days) };
+  });
+
+  app.get('/api/devices/:id/incidents', async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!getDevice(db, id)) return reply.code(404).send({ error: 'Device not found' });
+    const limit = clampIntParam((request.query as { limit?: string }).limit, 50, 1, 500);
+    return { incidents: getIncidentTimeline(db, id, limit) };
   });
 }

@@ -1,4 +1,5 @@
-import type { Beat, CheckType, Device, DeviceStatus, NotificationChannel, NotificationChannelType, NotificationEvent, User } from '@device-monitoring/shared';
+import type { Beat, CheckType, Device, DeviceStatus, MaintenanceWindow, NotificationChannel, NotificationChannelType, NotificationEvent, User, UserRole } from '@device-monitoring/shared';
+import { decryptSecret } from '../notifications/crypto.js';
 
 type Row = Record<string, unknown>;
 
@@ -7,7 +8,12 @@ const nullableIso = (value: unknown): string | null => (value === null || value 
 const intBool = (value: unknown): boolean => Number(value) === 1;
 
 export function mapUser(row: Row): User {
-  return { id: Number(row.id), username: String(row.username), createdAt: iso(row.created_at) };
+  return {
+    id: Number(row.id),
+    username: String(row.username),
+    role: String(row.role ?? 'admin') as UserRole,
+    createdAt: iso(row.created_at)
+  };
 }
 
 export function mapDevice(row: Row): Device {
@@ -24,6 +30,8 @@ export function mapDevice(row: Row): Device {
     checkPort: row.check_port === null || row.check_port === undefined ? null : Number(row.check_port),
     group: row.group === null || row.group === undefined ? null : String(row.group),
     latencyThresholdMs: row.latency_threshold_ms === null || row.latency_threshold_ms === undefined ? null : Number(row.latency_threshold_ms),
+    tlsExpiryWarnDays: row.tls_expiry_warn_days === null || row.tls_expiry_warn_days === undefined ? null : Number(row.tls_expiry_warn_days),
+    isPublic: intBool(row.is_public),
     currentStatus: String(row.current_status) as DeviceStatus,
     lastLatencyMs: row.last_latency_ms === null ? null : Number(row.last_latency_ms),
     lastCheckedAt: nullableIso(row.last_checked_at),
@@ -45,7 +53,7 @@ export function mapBeat(row: Row): Beat {
 }
 
 export function mapChannel(row: Row, redact = true): NotificationChannel {
-  const config = JSON.parse(String(row.config_json)) as Record<string, unknown>;
+  const config = JSON.parse(decryptSecret(String(row.config_json))) as Record<string, unknown>;
   return {
     id: Number(row.id),
     type: String(row.type) as NotificationChannelType,
@@ -68,6 +76,20 @@ export function mapEvent(row: Row): NotificationEvent {
     success: intBool(row.success),
     error: row.error === null ? null : String(row.error),
     createdAt: iso(row.created_at)
+  };
+}
+
+export function mapMaintenanceWindow(row: Row): MaintenanceWindow {
+  return {
+    id: Number(row.id),
+    deviceId: Number(row.device_id),
+    startsAt: iso(row.starts_at),
+    endsAt: iso(row.ends_at),
+    reason: row.reason === null || row.reason === undefined ? null : String(row.reason),
+    suppressNotifications: intBool(row.suppress_notifications),
+    createdBy: row.created_by === null || row.created_by === undefined ? null : Number(row.created_by),
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at)
   };
 }
 

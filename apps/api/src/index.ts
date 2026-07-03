@@ -4,8 +4,10 @@ import { loadConfig } from './config.js';
 import { migrate, openDatabase } from './db/database.js';
 import { MultiChecker } from './monitoring/checker.js';
 import { MonitoringScheduler } from './monitoring/service.js';
+import { setEncryptionKey } from './notifications/crypto.js';
 
 const config = loadConfig();
+setEncryptionKey(config.encryptionKey);
 const db = openDatabase(config.databasePath);
 migrate(db);
 await bootstrapAdmin(db, config.ADMIN_USERNAME, config.ADMIN_PASSWORD);

@@ -8,11 +8,15 @@ import { ZodError } from 'zod';
 import type { AppConfig } from './config.js';
 import type { Db } from './db/database.js';
 import { requireAuth } from './auth/sessions.js';
+import { HttpError } from './errors.js';
+import { renderMetrics } from './metrics/registry.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerDeviceRoutes } from './routes/devices.js';
+import { registerMaintenanceRoutes } from './routes/maintenance.js';
 import { registerNotificationRoutes } from './routes/notifications.js';
 import { registerStatusRoutes } from './routes/status.js';
+import { registerUserRoutes } from './routes/users.js';
 
 export async function buildApp(db: Db, config: AppConfig) {
   const app = Fastify({ logger: { level: config.NODE_ENV === 'test' ? 'silent' : 'info' } });
@@ -20,6 +24,10 @@ export async function buildApp(db: Db, config: AppConfig) {
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
       reply.code(400).send({ error: 'Validation failed', details: error.flatten() });
+      return;
+    }
+    if (error instanceof HttpError) {
+      reply.code(error.statusCode).send({ error: error.message });
       return;
     }
     app.log.error(error);
@@ -30,19 +38,32 @@ export async function buildApp(db: Db, config: AppConfig) {
   await app.register(cookie, { secret: config.COOKIE_SECRET ?? 'development-cookie-secret-change-me-32bytes' });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
+  const publicApiRoutes = new Set(['/api/auth/login', ...(config.ENABLE_STATUS_PAGE ? ['/api/status'] : [])]);
+
   app.get('/healthz', async () => ({ ok: true }));
   await registerAuthRoutes(app, db, config.SECURE_COOKIES);
   if (config.ENABLE_STATUS_PAGE) await registerStatusRoutes(app, db);
 
+  if (config.ENABLE_METRICS) {
+    app.get('/metrics', async (request, reply) => {
+      // Scrapers carry no session cookie, so this is gated by an optional
+      // bearer token instead of the cookie-based auth used everywhere else.
+      if (config.METRICS_TOKEN && request.headers.authorization !== `Bearer ${config.METRICS_TOKEN}`) {
+        return reply.code(401).send({ error: 'Unauthorized' });
+      }
+      reply.header('content-type', 'text/plain; version=0.0.4; charset=utf-8');
+      return renderMetrics(db);
+    });
+  }
+
   app.addHook('preHandler', async (request, reply) => {
-    if (!request.url.startsWith('/api/') || request.url === '/api/auth/login') return;
-    if (config.ENABLE_STATUS_PAGE && request.url === '/api/status') return;
+    if (!request.url.startsWith('/api/') || publicApiRoutes.has(request.url)) return;
     await requireAuth(db)(request, reply);
   });
 
   app.addHook('preHandler', async (request, reply) => {
     if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return;
-    if (!request.url.startsWith('/api/') || request.url === '/api/auth/login') return;
+    if (!request.url.startsWith('/api/') || publicApiRoutes.has(request.url)) return;
     if (request.headers['x-device-monitoring-csrf'] !== '1') {
       return reply.code(403).send({ error: 'Missing CSRF header' });
     }
@@ -51,6 +72,8 @@ export async function buildApp(db: Db, config: AppConfig) {
   await registerDashboardRoutes(app, db);
   await registerDeviceRoutes(app, db);
   await registerNotificationRoutes(app, db);
+  await registerUserRoutes(app, db);
+  await registerMaintenanceRoutes(app, db);
 
   if (existsSync(config.staticDir)) {
     await app.register(staticPlugin, { root: config.staticDir, prefix: '/' });

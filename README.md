@@ -5,11 +5,15 @@ Device Monitoring is a lightweight, self-hosted uptime monitor for devices on yo
 ## Features
 
 - Secure username/password login with Argon2id password hashing.
+- Multi-user accounts with admin/viewer roles; viewers get read-only access everywhere.
 - HttpOnly session cookies and CSRF header protection for mutating API calls.
 - Device inventory with host/IP, interval, timeout, retry count, and enabled flag.
-- Periodic ping checks with beat history and latency tracking.
-- State-transition alerts for `up -> down`, `down -> up`, and first known state.
-- Notification channels for Discord webhooks, Telegram bots, and generic webhooks.
+- Ping, HTTP, TCP, DNS-resolution, and TLS-certificate-expiry checks, with beat history and latency tracking.
+- State-transition alerts for `up -> down`, `down -> up`, degraded (latency/cert-expiry threshold), and first known state.
+- Maintenance windows per device that suppress alert noise (beats still recorded) and an on-demand incident timeline.
+- Notification channels for Discord webhooks, Telegram bots, and generic webhooks, with secrets encrypted at rest (AES-256-GCM).
+- Public, unauthenticated status page for devices explicitly marked public (off and empty by default).
+- Prometheus-format `/metrics` endpoint, optionally bearer-token protected.
 - Dashboard with up/down/unknown summary, recent beats, device table, and beat timeline.
 - SQLite database stored in a Docker volume.
 - GitHub Actions CI using free-tier features only: typecheck, lint, tests, Docker build.
@@ -28,6 +32,8 @@ Edit `.env` and set strong values:
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=a-long-random-password-at-least-12-chars
 COOKIE_SECRET=a-random-32-plus-character-secret-value
+# generate with: openssl rand -base64 32 — keep it stable once channels exist
+SECRET_ENCRYPTION_KEY=a-base64-encoded-32-byte-key
 ```
 
 Start the app:
@@ -80,6 +86,11 @@ pnpm test:coverage
 | `HOST`           | No              | `0.0.0.0`                         | API bind host.                                                          |
 | `PORT`           | No              | `3000`                            | API/web port in production.                                             |
 | `STATIC_DIR`     | No              | `./public`                        | Built frontend directory served by the API.                             |
+| `BEAT_RETENTION_DAYS` | No         | `30`                               | Days of beat/notification-event history to keep.                       |
+| `ENABLE_STATUS_PAGE` | No          | `false`                            | Enables `GET /api/status`. Devices must also be individually marked public. |
+| `SECRET_ENCRYPTION_KEY` | Production | dev-only fallback              | Base64, 32 bytes, encrypts notification-channel secrets at rest. Generate with `openssl rand -base64 32`. |
+| `ENABLE_METRICS` | No              | `false`                            | Enables the Prometheus-format `GET /metrics` endpoint.                  |
+| `METRICS_TOKEN`  | No              | none                               | If set, `/metrics` requires `Authorization: Bearer <token>`.            |
 
 ## Notification configuration examples
 
@@ -108,7 +119,7 @@ Generic webhook:
 }
 ```
 
-Secrets are stored in SQLite for the MVP and redacted from API responses and UI. For high-security deployments, mount the SQLite volume on encrypted storage and restrict filesystem access.
+Channel secrets are encrypted at rest with AES-256-GCM (key from `SECRET_ENCRYPTION_KEY`) and redacted from API responses and the UI. Keep the key stable and back it up alongside the database — without it, stored secrets cannot be decrypted.
 
 ## Architecture
 
@@ -119,7 +130,7 @@ packages/shared   Zod schemas and shared TypeScript types
 /data             SQLite database volume in Docker
 ```
 
-The monitoring scheduler runs inside the API process for the MVP. Check logic, repositories, and notification providers are separated so HTTP/TCP/DNS checks, multi-worker scheduling, and encrypted secret storage can be added later without rewriting the UI.
+The monitoring scheduler runs inside the API process. Check logic (ping/HTTP/TCP/DNS/TLS), repositories, and notification providers are separated modules, so multi-worker scheduling or new check types can be added without rewriting the UI.
 
 ## CI/CD
 
@@ -140,15 +151,14 @@ No GitHub Pro features are required.
 - Sessions use HttpOnly cookies, `SameSite=Strict`, and `Secure` in production.
 - Mutating API calls require `x-device-monitoring-csrf: 1`.
 - Login and API routes are rate-limited.
-- Notification secrets are redacted in API responses.
+- Viewer accounts have read-only API access; only admins can write.
+- Notification-channel secrets are encrypted at rest (AES-256-GCM) and redacted in API responses.
+- Devices are private by default; the public status page only ever shows devices explicitly marked public.
 - Run behind HTTPS in production; cookie `Secure` mode expects TLS at the browser edge.
 
 ## Roadmap
 
-- HTTP, TCP, DNS, and TLS certificate checks.
-- Public status pages.
-- Multi-user accounts and RBAC.
-- Prometheus/OpenTelemetry export.
-- Secret encryption at rest.
-- Incident timelines and maintenance windows.
+- OpenTelemetry export (Prometheus `/metrics` already available).
 - Import/export and backup tooling.
+- Recurring/multi-device maintenance windows.
+- Public status page branding and multiple named status pages.

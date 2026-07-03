@@ -1,6 +1,7 @@
 import type { CreateNotificationChannelInput, NotificationChannel, NotificationEvent, UpdateNotificationChannelInput } from '@device-monitoring/shared';
 import type { Db } from '../db/database.js';
 import { mapChannel, mapEvent } from '../db/mappers.js';
+import { encryptSecret } from './crypto.js';
 import { providers, type NotificationPayload } from './providers.js';
 
 export function listChannels(db: Db): NotificationChannel[] {
@@ -29,7 +30,7 @@ export function getChannel(db: Db, id: number, redact = true): NotificationChann
 export function createChannel(db: Db, input: CreateNotificationChannelInput): NotificationChannel {
   const result = db
     .prepare('INSERT INTO notification_channels (type, name, enabled, config_json) VALUES (?, ?, ?, ?)')
-    .run(input.type, input.name, input.enabled ? 1 : 0, JSON.stringify(input.config));
+    .run(input.type, input.name, input.enabled ? 1 : 0, encryptSecret(JSON.stringify(input.config)));
   return getChannel(db, Number(result.lastInsertRowid)) as NotificationChannel;
 }
 
@@ -46,7 +47,7 @@ export function updateChannel(db: Db, id: number, input: UpdateNotificationChann
   };
   db.prepare(
     `UPDATE notification_channels SET type = ?, name = ?, enabled = ?, config_json = ?, updated_at = ? WHERE id = ?`
-  ).run(next.type, next.name, next.enabled ? 1 : 0, JSON.stringify(next.config), new Date().toISOString(), id);
+  ).run(next.type, next.name, next.enabled ? 1 : 0, encryptSecret(JSON.stringify(next.config)), new Date().toISOString(), id);
   return getChannel(db, id);
 }
 

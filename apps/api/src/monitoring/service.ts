@@ -1,6 +1,7 @@
 import type { Device, DeviceStatus } from '@device-monitoring/shared';
 import type { Db } from '../db/database.js';
 import { mapDevice } from '../db/mappers.js';
+import { isDeviceInMaintenanceWindow } from '../maintenance/repository.js';
 import { notifyTransition } from '../notifications/service.js';
 import type { CheckResult, DeviceChecker } from './checker.js';
 
@@ -29,28 +30,46 @@ export function recordCheck(db: Db, device: Device, result: CheckResult, deviceS
   return { previousStatus, currentStatus };
 }
 
-function resolveStatus(result: CheckResult, thresholdMs: number | null): DeviceStatus {
+type DegradationInputs = Pick<Device, 'checkType' | 'latencyThresholdMs' | 'tlsExpiryWarnDays'>;
+
+function degradedReason(result: CheckResult, device: DegradationInputs): string | null {
+  if (device.checkType === 'tls' && result.meta?.daysUntilExpiry !== undefined) {
+    const warnDays = device.tlsExpiryWarnDays ?? 14;
+    if (result.meta.daysUntilExpiry <= warnDays) return `TLS certificate expires in ${result.meta.daysUntilExpiry} day(s)`;
+  }
+  if (device.latencyThresholdMs && result.latencyMs !== null && result.latencyMs > device.latencyThresholdMs) {
+    return `Latency ${result.latencyMs}ms exceeds threshold ${device.latencyThresholdMs}ms`;
+  }
+  return null;
+}
+
+function resolveStatus(result: CheckResult, device: DegradationInputs): DeviceStatus {
   if (result.status === 'down') return 'down';
-  if (thresholdMs && result.latencyMs !== null && result.latencyMs > thresholdMs) return 'degraded';
-  return 'up';
+  return degradedReason(result, device) ? 'degraded' : 'up';
 }
 
 export async function checkDevice(db: Db, checker: DeviceChecker, device: Device): Promise<void> {
   const result = await checker.check({ host: device.host, checkType: device.checkType, checkUrl: device.checkUrl, checkPort: device.checkPort, timeoutMs: device.timeoutMs, retries: device.retries });
-  const effectiveStatus = resolveStatus(result, device.latencyThresholdMs);
+  const effectiveStatus = resolveStatus(result, device);
   // Beats store the raw reachability outcome (up/down); "degraded" only exists
-  // at the device level, derived from latency vs threshold. Uptime math stays
-  // pure while the dashboard still surfaces slow-but-alive devices.
+  // at the device level, derived from latency/TLS-expiry vs threshold. Uptime
+  // math stays pure while the dashboard still surfaces slow-or-expiring-soon
+  // but reachable devices.
   const transition = recordCheck(db, device, result, effectiveStatus);
   if (transition.previousStatus !== transition.currentStatus) {
-    await notifyTransition(db, {
-      device: { id: device.id, name: device.name, host: device.host },
-      previousStatus: transition.previousStatus,
-      currentStatus: transition.currentStatus,
-      latencyMs: result.latencyMs,
-      error: effectiveStatus === 'degraded' ? `Latency ${result.latencyMs}ms exceeds threshold ${device.latencyThresholdMs}ms` : result.error,
-      checkedAt: new Date().toISOString()
-    });
+    const checkedAt = new Date().toISOString();
+    // Beats/uptime are recorded unconditionally above — maintenance only
+    // suppresses alert noise, not data collection.
+    if (!isDeviceInMaintenanceWindow(db, device.id, checkedAt)) {
+      await notifyTransition(db, {
+        device: { id: device.id, name: device.name, host: device.host },
+        previousStatus: transition.previousStatus,
+        currentStatus: transition.currentStatus,
+        latencyMs: result.latencyMs,
+        error: effectiveStatus === 'degraded' ? degradedReason(result, device) : result.error,
+        checkedAt
+      });
+    }
   }
 }
 

@@ -5,7 +5,9 @@ import type { DeviceStatus } from '@device-monitoring/shared';
 
 export async function registerStatusRoutes(app: FastifyInstance, db: Db): Promise<void> {
   app.get('/api/status', async () => {
-    const rows = db.prepare('SELECT * FROM devices WHERE enabled = 1 ORDER BY name COLLATE NOCASE').all() as Record<string, unknown>[];
+    const rows = db
+      .prepare('SELECT * FROM devices WHERE enabled = 1 AND is_public = 1 ORDER BY name COLLATE NOCASE')
+      .all() as Record<string, unknown>[];
     const devices = rows.map((row) => {
       const d = mapDevice(row);
       return {

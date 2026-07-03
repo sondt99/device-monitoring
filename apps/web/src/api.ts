@@ -1,14 +1,20 @@
 import type {
   Beat,
   CreateDeviceInput,
+  CreateMaintenanceWindowInput,
   CreateNotificationChannelInput,
+  CreateUserInput,
   DashboardSummary,
   Device,
+  Incident,
   LoginInput,
+  MaintenanceWindow,
   NotificationChannel,
   NotificationEvent,
   UpdateDeviceInput,
+  UpdateMaintenanceWindowInput,
   UpdateNotificationChannelInput,
+  UpdateUserInput,
   User
 } from '@device-monitoring/shared';
 
@@ -38,12 +44,24 @@ export const api = {
   deleteDevice: (id: number) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   beats: (id: number) => request<{ beats: Beat[] }>(`/api/devices/${id}/beats?limit=200`),
   uptime: (id: number, days = 30) => request<{ uptime: { date: string; total: number; up: number; uptimePct: number }[] }>(`/api/devices/${id}/uptime?days=${days}`),
+  incidents: (id: number, limit = 50) => request<{ incidents: Incident[] }>(`/api/devices/${id}/incidents?limit=${limit}`),
   channels: () => request<{ channels: NotificationChannel[] }>('/api/notification-channels'),
   createChannel: (input: CreateNotificationChannelInput) => request<{ channel: NotificationChannel }>('/api/notification-channels', { method: 'POST', body: JSON.stringify(input) }),
   updateChannel: (id: number, input: UpdateNotificationChannelInput) => request<{ channel: NotificationChannel }>(`/api/notification-channels/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteChannel: (id: number) => request<void>(`/api/notification-channels/${id}`, { method: 'DELETE' }),
   testChannel: (id: number) => request<{ ok: true }>(`/api/notification-channels/${id}/test`, { method: 'POST' }),
   notificationEvents: () => request<{ events: NotificationEvent[] }>('/api/notification-events?limit=50'),
+  maintenanceWindows: (deviceId?: number) =>
+    request<{ maintenanceWindows: MaintenanceWindow[] }>(`/api/maintenance-windows${deviceId ? `?deviceId=${deviceId}` : ''}`),
+  createMaintenanceWindow: (input: CreateMaintenanceWindowInput) =>
+    request<{ maintenanceWindow: MaintenanceWindow }>('/api/maintenance-windows', { method: 'POST', body: JSON.stringify(input) }),
+  updateMaintenanceWindow: (id: number, input: UpdateMaintenanceWindowInput) =>
+    request<{ maintenanceWindow: MaintenanceWindow }>(`/api/maintenance-windows/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  deleteMaintenanceWindow: (id: number) => request<void>(`/api/maintenance-windows/${id}`, { method: 'DELETE' }),
+  users: () => request<{ users: User[] }>('/api/users'),
+  createUser: (input: CreateUserInput) => request<{ user: User }>('/api/users', { method: 'POST', body: JSON.stringify(input) }),
+  updateUser: (id: number, input: UpdateUserInput) => request<{ user: User }>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  deleteUser: (id: number) => request<void>(`/api/users/${id}`, { method: 'DELETE' }),
   publicStatus: () => request<{
     overall: 'up' | 'degraded' | 'down' | 'unknown';
     counts: { up: number; degraded: number; down: number; unknown: number };

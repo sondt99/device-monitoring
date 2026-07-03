@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
-  test: { environment: 'node' },
+  test: { environment: 'node', setupFiles: ['./test/setup.ts'] },
   resolve: {
     alias: {
       '@device-monitoring/shared': fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url))

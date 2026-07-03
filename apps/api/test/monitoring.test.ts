@@ -15,6 +15,7 @@ const baseInput: CreateDeviceInput = {
   checkPort: null,
   group: null,
   latencyThresholdMs: null,
+  tlsExpiryWarnDays: null,
   intervalSeconds: 10,
   timeoutMs: 500,
   retries: 0,
@@ -52,6 +53,52 @@ describe('monitoring service', () => {
         error: 'Latency 250ms exceeds threshold 100ms'
       })
     );
+    db.close();
+  });
+
+  it('marks a TLS device degraded when the certificate is expiring soon', async () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const device = createDevice(db, { ...baseInput, checkType: 'tls', checkPort: 443, tlsExpiryWarnDays: 14 });
+    await checkDevice(
+      db,
+      { check: async () => ({ status: 'up', latencyMs: 30, error: null, meta: { daysUntilExpiry: 5 } }) },
+      device
+    );
+
+    expect(getDevice(db, device.id)?.currentStatus).toBe('degraded');
+    expect(notifyTransition).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ currentStatus: 'degraded', error: 'TLS certificate expires in 5 day(s)' })
+    );
+    db.close();
+  });
+
+  it('keeps a TLS device up when the certificate is not near expiry', async () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const device = createDevice(db, { ...baseInput, checkType: 'tls', checkPort: 443, tlsExpiryWarnDays: 14 });
+    await checkDevice(
+      db,
+      { check: async () => ({ status: 'up', latencyMs: 30, error: null, meta: { daysUntilExpiry: 90 } }) },
+      device
+    );
+
+    expect(getDevice(db, device.id)?.currentStatus).toBe('up');
+    db.close();
+  });
+
+  it('defaults the TLS expiry warning threshold to 14 days when unset', async () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const device = createDevice(db, { ...baseInput, checkType: 'tls', checkPort: 443, tlsExpiryWarnDays: null });
+    await checkDevice(
+      db,
+      { check: async () => ({ status: 'up', latencyMs: 30, error: null, meta: { daysUntilExpiry: 10 } }) },
+      device
+    );
+
+    expect(getDevice(db, device.id)?.currentStatus).toBe('degraded');
     db.close();
   });
 

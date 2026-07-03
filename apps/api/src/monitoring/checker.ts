@@ -1,12 +1,16 @@
 import { execFile } from 'node:child_process';
-import { createConnection } from 'node:net';
+import { resolve as dnsResolve } from 'node:dns/promises';
+import { createConnection, isIP } from 'node:net';
+import { connect as tlsConnect } from 'node:tls';
 import { promisify } from 'node:util';
+import type { CheckType } from '@device-monitoring/shared';
 
 const execFileAsync = promisify(execFile);
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface CheckTarget {
   host: string;
-  checkType: 'ping' | 'http' | 'tcp';
+  checkType: CheckType;
   checkUrl: string | null;
   checkPort: number | null;
   timeoutMs: number;
@@ -17,6 +21,23 @@ export interface CheckResult {
   status: 'up' | 'down';
   latencyMs: number | null;
   error: string | null;
+  meta?: { daysUntilExpiry?: number };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise((resolvePromise, reject) => {
+    const timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolvePromise(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 export interface DeviceChecker {
@@ -102,14 +123,93 @@ export class TcpChecker {
   }
 }
 
+export class DnsChecker {
+  async check(target: CheckTarget): Promise<CheckResult> {
+    const { host, timeoutMs, retries } = target;
+    const attempts = retries + 1;
+    let lastError = 'DNS resolution failed';
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const started = Date.now();
+      try {
+        const addresses = await withTimeout(dnsResolve(host), timeoutMs, `Timeout after ${timeoutMs}ms`);
+        if (addresses.length === 0) throw new Error('DNS resolution returned no records');
+        return { status: 'up', latencyMs: Date.now() - started, error: null };
+      } catch (err) {
+        lastError = err instanceof Error ? err.message.slice(0, 500) : 'DNS resolution failed';
+      }
+    }
+    return { status: 'down', latencyMs: null, error: lastError };
+  }
+}
+
+export class TlsChecker {
+  async check(target: CheckTarget): Promise<CheckResult> {
+    const { host, checkPort, timeoutMs, retries } = target;
+    if (!checkPort) return { status: 'down', latencyMs: null, error: 'No port configured for TLS check' };
+
+    const attempts = retries + 1;
+    let lastError = 'TLS check failed';
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const started = Date.now();
+      try {
+        const daysUntilExpiry = await new Promise<number>((resolvePromise, reject) => {
+          const socket = tlsConnect(
+            {
+              host,
+              port: checkPort,
+              // SNI's servername must be a hostname, not an IP literal (RFC
+              // 6066) — Node warns and will eventually ignore it otherwise.
+              // Many monitored devices are reached by bare LAN IP.
+              servername: isIP(host) ? undefined : host,
+              timeout: timeoutMs,
+              // Certificate *trust* isn't what this check verifies — only
+              // expiry. Self-signed/internal certs (common on monitored
+              // home/office devices) must still hand back their certificate.
+              rejectUnauthorized: false
+            },
+            () => {
+              const cert = socket.getPeerCertificate();
+              socket.end();
+              if (!cert || !cert.valid_to) {
+                reject(new Error('No TLS certificate presented'));
+                return;
+              }
+              const daysLeft = Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / MS_PER_DAY);
+              resolvePromise(daysLeft);
+            }
+          );
+          socket.once('timeout', () => {
+            socket.destroy();
+            reject(new Error(`Timeout after ${timeoutMs}ms`));
+          });
+          socket.once('error', (err) => {
+            socket.destroy();
+            reject(err);
+          });
+        });
+        return { status: 'up', latencyMs: Date.now() - started, error: null, meta: { daysUntilExpiry } };
+      } catch (err) {
+        lastError = err instanceof Error ? err.message.slice(0, 500) : 'TLS check failed';
+      }
+    }
+    return { status: 'down', latencyMs: null, error: lastError };
+  }
+}
+
 export class MultiChecker implements DeviceChecker {
   private readonly ping = new PingChecker();
   private readonly http = new HttpChecker();
   private readonly tcp = new TcpChecker();
+  private readonly dns = new DnsChecker();
+  private readonly tls = new TlsChecker();
 
   async check(target: CheckTarget): Promise<CheckResult> {
     if (target.checkType === 'http') return this.http.check(target);
     if (target.checkType === 'tcp') return this.tcp.check(target);
+    if (target.checkType === 'dns') return this.dns.check(target);
+    if (target.checkType === 'tls') return this.tls.check(target);
     return this.ping.check(target);
   }
 }
