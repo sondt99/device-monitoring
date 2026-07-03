@@ -53,6 +53,8 @@ if [ -z "$APP_PORT" ]; then
 fi
 
 echo "==> starting device-monitoring on http://localhost:$APP_PORT"
+echo "    (host port $APP_PORT is mapped to port 3000 inside the container —"
+echo "     the app's own logs will always say 3000; that is expected)"
 if [ -n "$USE_SUDO" ]; then
   # `sudo VAR=value cmd` keeps the variable despite sudo's env_reset.
   exec sudo APP_PORT="$APP_PORT" docker compose up "$@"
