@@ -28,6 +28,7 @@ describe('routing', () => {
 
     expect(await screen.findByText('System status')).toBeInTheDocument();
     expect(await screen.findByText('All systems operational')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '← Dashboard' })).toBeInTheDocument();
     expect(vi.mocked(api.me)).not.toHaveBeenCalled();
   });
 

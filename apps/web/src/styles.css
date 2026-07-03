@@ -1830,12 +1830,38 @@ tbody tr:last-child td {
 }
 
 .status-header {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  text-align: left;
   margin-bottom: 2rem;
 }
 
 .status-header h1 {
+  margin-bottom: 0;
   font-size: 1.6rem;
+}
+
+.status-home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--ghost-bg);
+  padding: 0.45rem 0.85rem;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.status-home-link:hover,
+.status-home-link:focus-visible {
+  border-color: var(--border-strong);
+  color: var(--accent);
 }
 
 .status-banner {

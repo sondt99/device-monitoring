@@ -1,8 +1,17 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { EmptyState, LoadingBlock, StatusBadge } from '../components/index.js';
 import { formatDateTime, formatLatency } from '../lib/format.js';
 import { api } from '../api.js';
+
+function HomeLink() {
+  return (
+    <Link className="status-home-link" to="/">
+      ← Dashboard
+    </Link>
+  );
+}
 
 export function StatusPage() {
   const status = useQuery({ queryKey: ['public-status'], queryFn: api.publicStatus, refetchInterval: 15_000 });
@@ -36,6 +45,7 @@ export function StatusPage() {
   if (status.error) {
     return (
       <main className="status-page">
+        <HomeLink />
         <EmptyState title="Status page unavailable" description="The public status page may not be enabled on this instance." />
       </main>
     );
@@ -46,8 +56,11 @@ export function StatusPage() {
   return (
     <main className="status-page">
       <header className="status-header">
-        <p className="eyebrow">Device Monitoring</p>
-        <h1>System status</h1>
+        <div>
+          <p className="eyebrow">Device Monitoring</p>
+          <h1>System status</h1>
+        </div>
+        <HomeLink />
       </header>
 
       <div className={`status-banner status-banner-${overall}`}>
