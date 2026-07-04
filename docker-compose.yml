@@ -20,6 +20,10 @@ services:
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY — generate with `openssl rand -base64 32`}
       # Set SECURE_COOKIES=true only if serving over HTTPS (behind TLS terminator like nginx/Caddy)
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      # X-Forwarded-For trust for per-IP rate limits. Only behind a trusted
+      # proxy: 'true' = one hop, '<N>' = N hops, '<CIDR>' = trusted proxy nets.
+      # Leave 'false' for direct exposure (else clients can spoof their IP).
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       BEAT_RETENTION_DAYS: ${BEAT_RETENTION_DAYS:-30}
       ENABLE_STATUS_PAGE: ${ENABLE_STATUS_PAGE:-false}
       ENABLE_METRICS: ${ENABLE_METRICS:-false}

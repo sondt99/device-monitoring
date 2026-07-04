@@ -1,4 +1,5 @@
 import type { Device, DeviceStatus, NotificationChannelType } from '@device-monitoring/shared';
+import { assertSafeOutboundUrl } from './url-guard.js';
 
 export interface NotificationPayload {
   device: Pick<Device, 'id' | 'name' | 'host'>;
@@ -28,6 +29,7 @@ function renderMessage(payload: NotificationPayload): string {
 }
 
 async function postJson(url: string, body: unknown): Promise<void> {
+  await assertSafeOutboundUrl(url);
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

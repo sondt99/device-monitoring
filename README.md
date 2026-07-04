@@ -47,6 +47,20 @@ The script finds the first free host port in 3000–3100 (so a busy port 3000 ne
 
 Open the printed URL (default [http://localhost:3000](http://localhost:3000)) and sign in with the admin credentials. The first admin user is created only when the database has no users. There is no default password.
 
+> **Zero-config option:** if you skip the `.env` steps and just run `./scripts/up.sh --build -d`, the script creates `.env` from the template with freshly generated secrets and prints the one-time admin password. Save that password.
+
+## Updating
+
+To update an existing install to the latest version, run:
+
+```bash
+./scripts/update.sh
+```
+
+This fetches the latest code (`git pull`), rebuilds the image, and restarts the stack. Your data volume and `.env` are preserved, the host port stays the same, and database schema migrations run automatically on boot. If a required secret in `.env` is still blank or set to a placeholder value, the script fills it in with a strong generated value so the app starts cleanly (rotating `COOKIE_SECRET` does **not** log anyone out — sessions are stored server-side).
+
+If you don't use git (e.g. you downloaded a snapshot), replace the files and run `./scripts/up.sh --build -d` instead — it performs the same secret-healing and restart.
+
 ## Development
 
 Requirements:
@@ -84,7 +98,7 @@ pnpm test:coverage
 | ------------------ | --------------- | ----------------------------------- | ----------------------------------------------------------------------- |
 | `ADMIN_USERNAME` | First boot only | none                                | Username for the first admin account. Required when there are no users. |
 | `ADMIN_PASSWORD` | First boot only | none                                | Password for the first admin account. Must be at least 12 characters.   |
-| `COOKIE_SECRET`  | Production      | development-only fallback           | Secret used to sign cookies. Use at least 32 random characters.         |
+| `COOKIE_SECRET`  | Production      | development-only fallback           | Secret used to sign cookies. Use at least 32 random characters. Required in production; well-known placeholders are rejected. |
 | `DATABASE_PATH`  | No              | `./data/device-monitoring.sqlite` | SQLite database path. Docker uses`/data/device-monitoring.sqlite`.    |
 | `HOST`           | No              | `0.0.0.0`                         | API bind host.                                                          |
 | `PORT`           | No              | `3000`                            | API/web port in production.                                             |
@@ -93,7 +107,8 @@ pnpm test:coverage
 | `ENABLE_STATUS_PAGE` | No          | `false`                            | Enables `GET /api/status`. Devices must also be individually marked public. |
 | `SECRET_ENCRYPTION_KEY` | Production | dev-only fallback              | Base64, 32 bytes, encrypts notification-channel secrets at rest. Generate with `openssl rand -base64 32`. |
 | `ENABLE_METRICS` | No              | `false`                            | Enables the Prometheus-format `GET /metrics` endpoint.                  |
-| `METRICS_TOKEN`  | No              | none                               | If set, `/metrics` requires `Authorization: Bearer <token>`.            |
+| `METRICS_TOKEN`  | No¹             | none                               | Bearer token required to scrape `/metrics` (constant-time compared). ¹Required in production when `ENABLE_METRICS=true`. |
+| `TRUST_PROXY`    | No              | `false`                            | How much of `X-Forwarded-For` to trust for per-IP rate limits. Set only behind a trusted proxy: `true`=one hop, `<N>`=N hops, `<CIDR>`=trusted proxy nets. |
 
 ## Notification configuration examples
 
@@ -152,12 +167,13 @@ No GitHub Pro features are required.
 - No default admin account or default password is shipped.
 - Passwords are hashed with Argon2id.
 - Sessions use HttpOnly cookies, `SameSite=Strict`, and `Secure` in production.
-- Mutating API calls require `x-device-monitoring-csrf: 1`.
-- Login and API routes are rate-limited.
+- Mutating API calls require `x-device-monitoring-csrf: 1`; authentication is enforced on the matched route (not the raw URL), so encoded-path tricks can't bypass it.
+- Login is rate-limited to 5 attempts/min per IP (on top of the global 120/min); logins run in constant time so response timing doesn't reveal valid usernames.
+- A strict Content-Security-Policy is applied (`script-src 'self'`, framing denied).
 - Viewer accounts have read-only API access; only admins can write.
-- Notification-channel secrets are encrypted at rest (AES-256-GCM) and redacted in API responses.
+- Notification-channel secrets are encrypted at rest (AES-256-GCM) and redacted in API responses; outbound webhooks are blocked from reaching link-local / cloud-metadata addresses.
 - Devices are private by default; the public status page only ever shows devices explicitly marked public.
-- Run behind HTTPS in production; cookie `Secure` mode expects TLS at the browser edge.
+- Run behind HTTPS in production; set `SECURE_COOKIES=true` and, if behind a reverse proxy, `TRUST_PROXY` (see the environment-variables table) so per-IP rate limits key on the real client IP.
 
 ## Roadmap
 

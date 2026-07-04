@@ -18,4 +18,16 @@ describe('shared schemas', () => {
   it('rejects weak login payloads', () => {
     expect(() => loginSchema.parse({ username: 'admin', password: 'short' })).toThrow();
   });
+
+  it('accepts legitimate LAN hosts (hostnames, IPv4, IPv6)', () => {
+    for (const host of ['192.168.1.1', 'router-01.local', '::1', 'fe80::1%eth0', 'my_nas', '[2001:db8::1]']) {
+      expect(() => createDeviceSchema.parse({ name: 'Dev', host })).not.toThrow();
+    }
+  });
+
+  it('rejects hosts that could inject ping flags or shell metacharacters', () => {
+    for (const host of ['-f', '--flood', '-oProxyCommand=x', '8.8.8.8; rm -rf /', '$(reboot)', 'a b', 'host\nx']) {
+      expect(() => createDeviceSchema.parse({ name: 'Dev', host })).toThrow();
+    }
+  });
 });
