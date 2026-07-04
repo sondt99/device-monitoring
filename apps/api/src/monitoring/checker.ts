@@ -46,6 +46,15 @@ export interface DeviceChecker {
 
 export class PingChecker {
   async check(target: CheckTarget): Promise<CheckResult> {
+    // Defence-in-depth at the sink: input validation (hostSchema) already
+    // rejects such hosts on write, but the scheduler reads devices straight
+    // from the DB with no re-validation, so a row created before that
+    // validation existed could still carry a "-"-prefixed host. ping (invoked
+    // via execFile, so no shell) would parse it as a command-line flag —
+    // argument injection. Refuse it outright rather than hand it to ping.
+    if (target.host.startsWith('-')) {
+      return { status: 'down', latencyMs: null, error: 'Invalid host: must not start with "-"' };
+    }
     const attempts = target.retries + 1;
     let lastError = 'Unknown ping failure';
     for (let attempt = 0; attempt < attempts; attempt += 1) {
