@@ -112,11 +112,12 @@ export async function buildApp(db: Db, config: AppConfig) {
   // "/%61pi/devices" reaches the /api/devices handler while request.url still
   // reads "/%61pi/devices" — matching the raw URL there let an unauthenticated
   // caller slip past these hooks entirely.
-  //   - Matched route  -> routeOptions.url, the registered pattern (e.g.
+  //   - Matched route -> routeOptions.url, the registered pattern (e.g.
   //     "/api/devices/:id"): authoritative and immune to encoding/query tricks.
-  //   - Unmatched (404) -> the decoded request path, so an unknown /api/* path
-  //     is still gated to 401 (never 404) and doesn't confirm which routes
-  //     exist. No handler runs for these, so there is nothing to leak either way.
+  //   - No matched route -> the decoded request path, so an unknown /api/* path
+  //     is still gated (returns 401 rather than confirming non-existence).
+  // Either way no protected handler runs for an unmatched path, so the exact
+  // status (401 vs a 404 from a static wildcard/not-found) never leaks data.
   const gatePath = (request: FastifyRequest): string => {
     const routeUrl = request.routeOptions.url;
     if (routeUrl) return routeUrl;
