@@ -59,8 +59,23 @@ function resolveEncryptionKey(parsed: z.infer<typeof envSchema>): Buffer {
   return Buffer.from(DEV_FALLBACK_ENCRYPTION_KEY, 'utf8');
 }
 
+function assertProductionHardening(parsed: z.infer<typeof envSchema>): void {
+  if (parsed.NODE_ENV !== 'production') return;
+  // The /metrics endpoint leaks the device inventory (names, counts, latency).
+  // Its handler only enforces the bearer token when one is set, so an empty
+  // METRICS_TOKEN means unauthenticated exposure. Refuse to boot in that state
+  // rather than silently serving it to the internet. (Dev/test may still run
+  // tokenless for local scraping — see METRICS_TOKEN docs in .env.example.)
+  if (parsed.ENABLE_METRICS && !parsed.METRICS_TOKEN) {
+    throw new Error(
+      'METRICS_TOKEN is required when ENABLE_METRICS=true in production, otherwise /metrics is exposed without authentication. Set a strong token (e.g. `openssl rand -hex 32`) or disable metrics.'
+    );
+  }
+}
+
 export function loadConfig(input: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse(input);
+  assertProductionHardening(parsed);
   const databasePath = resolve(parsed.DATABASE_PATH);
   mkdirSync(dirname(databasePath), { recursive: true });
   return {
