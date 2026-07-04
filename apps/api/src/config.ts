@@ -6,6 +6,14 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3000),
+  // Enable only when running behind a trusted reverse proxy (nginx/Caddy).
+  // It makes Fastify derive request.ip from X-Forwarded-For so per-IP rate
+  // limiting throttles the real client instead of the proxy. Leaving it off
+  // when directly exposed prevents clients from spoofing their IP.
+  TRUST_PROXY: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   DATABASE_PATH: z.string().default('./data/device-monitoring.sqlite'),
   ADMIN_USERNAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),

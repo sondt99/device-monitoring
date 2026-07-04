@@ -6,7 +6,12 @@ import { clearSessionCookie, createSession, destroySession, setSessionCookie, se
 import { verifyPassword } from '../auth/passwords.js';
 
 export async function registerAuthRoutes(app: FastifyInstance, db: Db, secureCookies: boolean): Promise<void> {
-  app.post('/api/auth/login', async (request, reply) => {
+  // Brute-force / credential-stuffing guard: a much tighter budget than the
+  // global limiter (unauthenticated, internet-reachable endpoint). Keyed on
+  // client IP by the rate-limit plugin (see TRUST_PROXY for proxied setups).
+  const loginRateLimit = { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } };
+
+  app.post('/api/auth/login', loginRateLimit, async (request, reply) => {
     const body = loginSchema.parse(request.body);
     const row = db.prepare('SELECT * FROM users WHERE username = ?').get(body.username) as
       | (Record<string, unknown> & { password_hash: string })

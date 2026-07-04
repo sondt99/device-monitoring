@@ -19,7 +19,10 @@ import { registerStatusRoutes } from './routes/status.js';
 import { registerUserRoutes } from './routes/users.js';
 
 export async function buildApp(db: Db, config: AppConfig) {
-  const app = Fastify({ logger: { level: config.NODE_ENV === 'test' ? 'silent' : 'info' } });
+  const app = Fastify({
+    logger: { level: config.NODE_ENV === 'test' ? 'silent' : 'info' },
+    trustProxy: config.TRUST_PROXY
+  });
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
@@ -28,6 +31,16 @@ export async function buildApp(db: Db, config: AppConfig) {
     }
     if (error instanceof HttpError) {
       reply.code(error.statusCode).send({ error: error.message });
+      return;
+    }
+    // Framework/plugin client errors (rate-limit 429, payload-too-large 413,
+    // malformed JSON 400, ...) carry a statusCode. Preserve genuine 4xx codes
+    // instead of masking them as 500 — otherwise the login brute-force limiter
+    // would report "Internal server error" on throttle. 5xx stay masked so we
+    // never leak internal failure details.
+    const err = error as { statusCode?: number; message?: string };
+    if (typeof err.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 500) {
+      reply.code(err.statusCode).send({ error: err.message ?? 'Request failed' });
       return;
     }
     app.log.error(error);

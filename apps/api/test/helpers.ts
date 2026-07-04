@@ -7,6 +7,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     NODE_ENV: 'test',
     HOST: '127.0.0.1',
     PORT: 0,
+    TRUST_PROXY: false,
     DATABASE_PATH: ':memory:',
     ADMIN_USERNAME: undefined,
     ADMIN_PASSWORD: undefined,
