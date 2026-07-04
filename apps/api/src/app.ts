@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -21,7 +21,7 @@ import { registerUserRoutes } from './routes/users.js';
 export async function buildApp(db: Db, config: AppConfig) {
   const app = Fastify({
     logger: { level: config.NODE_ENV === 'test' ? 'silent' : 'info' },
-    trustProxy: config.TRUST_PROXY
+    trustProxy: config.trustProxy
   });
 
   app.setErrorHandler((error, _request, reply) => {
@@ -94,24 +94,39 @@ export async function buildApp(db: Db, config: AppConfig) {
     });
   }
 
-  // Gate on the *matched route pattern*, never the raw request.url. Fastify's
-  // router percent-decodes the path before matching, so a request to
+  // Decide the auth/CSRF gate on a canonical path, NEVER the raw request.url.
+  // Fastify's router percent-decodes the path before matching, so a request to
   // "/%61pi/devices" reaches the /api/devices handler while request.url still
   // reads "/%61pi/devices" — matching the raw URL there let an unauthenticated
-  // caller slip past this hook entirely. routeOptions.url is the registered
-  // pattern (e.g. "/api/devices/:id"), immune to encoding tricks and query
-  // strings; it is undefined for unmatched (404) requests, which carry no data.
-  const requiresApiGate = (routeUrl: string | undefined): boolean =>
-    !!routeUrl && routeUrl.startsWith('/api/') && !publicApiRoutes.has(routeUrl);
+  // caller slip past these hooks entirely.
+  //   - Matched route  -> routeOptions.url, the registered pattern (e.g.
+  //     "/api/devices/:id"): authoritative and immune to encoding/query tricks.
+  //   - Unmatched (404) -> the decoded request path, so an unknown /api/* path
+  //     is still gated to 401 (never 404) and doesn't confirm which routes
+  //     exist. No handler runs for these, so there is nothing to leak either way.
+  const gatePath = (request: FastifyRequest): string => {
+    const routeUrl = request.routeOptions.url;
+    if (routeUrl) return routeUrl;
+    const rawPath = (request.raw.url ?? '').split('?')[0];
+    try {
+      return decodeURIComponent(rawPath);
+    } catch {
+      return rawPath;
+    }
+  };
+  const requiresApiGate = (request: FastifyRequest): boolean => {
+    const path = gatePath(request);
+    return path.startsWith('/api/') && !publicApiRoutes.has(path);
+  };
 
   app.addHook('preHandler', async (request, reply) => {
-    if (!requiresApiGate(request.routeOptions.url)) return;
+    if (!requiresApiGate(request)) return;
     await requireAuth(db)(request, reply);
   });
 
   app.addHook('preHandler', async (request, reply) => {
     if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return;
-    if (!requiresApiGate(request.routeOptions.url)) return;
+    if (!requiresApiGate(request)) return;
     if (request.headers['x-device-monitoring-csrf'] !== '1') {
       return reply.code(403).send({ error: 'Missing CSRF header' });
     }

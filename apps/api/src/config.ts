@@ -6,14 +6,17 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3000),
-  // Enable only when running behind a trusted reverse proxy (nginx/Caddy).
-  // It makes Fastify derive request.ip from X-Forwarded-For so per-IP rate
-  // limiting throttles the real client instead of the proxy. Leaving it off
-  // when directly exposed prevents clients from spoofing their IP.
-  TRUST_PROXY: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
+  // How much of X-Forwarded-For to trust when deriving request.ip (used for
+  // per-IP rate limiting). Accepted values:
+  //   'false' (default) — trust nothing; use the socket peer. For direct
+  //                       internet exposure.
+  //   'true'            — trust exactly ONE hop (a single reverse proxy).
+  //   a positive integer N — trust N proxy hops.
+  //   an IP/CIDR list   — trust only those proxy addresses (most precise).
+  // Never resolves to boolean-true: trusting the whole chain would let a
+  // client spoof X-Forwarded-For and pick its own request.ip, defeating the
+  // login rate limiter. Resolved to a hop count / subnet list instead.
+  TRUST_PROXY: z.string().default('false'),
   DATABASE_PATH: z.string().default('./data/device-monitoring.sqlite'),
   ADMIN_USERNAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
@@ -41,7 +44,22 @@ export type AppConfig = z.infer<typeof envSchema> & {
   staticDir: string;
   encryptionKey: Buffer;
   cookieSecret: string;
+  // Value handed to Fastify's `trustProxy`. Deliberately never boolean-true.
+  trustProxy: boolean | number | string;
 };
+
+// Parse TRUST_PROXY into a spoof-resistant value for Fastify. 'true' maps to a
+// single hop (not boolean true, which would trust the whole client-supplied
+// X-Forwarded-For chain); integers are hop counts; anything else is treated as
+// a trusted IP/subnet list that proxy-addr understands.
+function resolveTrustProxy(raw: string): boolean | number | string {
+  const value = raw.trim();
+  if (value === '' || value.toLowerCase() === 'false') return false;
+  if (value.toLowerCase() === 'true') return 1;
+  const asInt = Number(value);
+  if (Number.isInteger(asInt) && asInt >= 0) return asInt;
+  return value;
+}
 
 // >= 32 chars, used only for signing when COOKIE_SECRET is unset in
 // dev/test. Never reached in production (resolveCookieSecret throws first).
@@ -102,6 +120,7 @@ export function loadConfig(input: NodeJS.ProcessEnv = process.env): AppConfig {
     databasePath,
     staticDir: parsed.STATIC_DIR ? resolve(parsed.STATIC_DIR) : resolve('public'),
     encryptionKey: resolveEncryptionKey(parsed),
-    cookieSecret: resolveCookieSecret(parsed)
+    cookieSecret: resolveCookieSecret(parsed),
+    trustProxy: resolveTrustProxy(parsed.TRUST_PROXY)
   };
 }

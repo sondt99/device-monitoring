@@ -58,4 +58,19 @@ describe('production hardening in loadConfig', () => {
     const config = loadConfig(env({ NODE_ENV: 'development' }));
     expect(config.cookieSecret.length).toBeGreaterThanOrEqual(32);
   });
+
+  it('never resolves TRUST_PROXY to boolean true (anti IP-spoofing)', () => {
+    // boolean true would trust the whole client-supplied X-Forwarded-For chain
+    expect(loadConfig(env({ TRUST_PROXY: 'true' })).trustProxy).toBe(1);
+  });
+
+  it('defaults trustProxy to false for direct exposure', () => {
+    expect(loadConfig(env({})).trustProxy).toBe(false);
+    expect(loadConfig(env({ TRUST_PROXY: 'false' })).trustProxy).toBe(false);
+  });
+
+  it('accepts an explicit hop count and an IP/CIDR allowlist', () => {
+    expect(loadConfig(env({ TRUST_PROXY: '2' })).trustProxy).toBe(2);
+    expect(loadConfig(env({ TRUST_PROXY: '10.0.0.0/8' })).trustProxy).toBe('10.0.0.0/8');
+  });
 });
