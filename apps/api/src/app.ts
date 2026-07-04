@@ -73,7 +73,7 @@ export async function buildApp(db: Db, config: AppConfig) {
       }
     }
   });
-  await app.register(cookie, { secret: config.COOKIE_SECRET ?? 'development-cookie-secret-change-me-32bytes' });
+  await app.register(cookie, { secret: config.cookieSecret });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
   const publicApiRoutes = new Set(['/api/auth/login', ...(config.ENABLE_STATUS_PAGE ? ['/api/status'] : [])]);

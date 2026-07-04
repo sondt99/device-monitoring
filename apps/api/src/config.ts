@@ -36,7 +36,26 @@ const envSchema = z.object({
   METRICS_TOKEN: z.string().optional()
 });
 
-export type AppConfig = z.infer<typeof envSchema> & { databasePath: string; staticDir: string; encryptionKey: Buffer };
+export type AppConfig = z.infer<typeof envSchema> & {
+  databasePath: string;
+  staticDir: string;
+  encryptionKey: Buffer;
+  cookieSecret: string;
+};
+
+// >= 32 chars, used only for signing when COOKIE_SECRET is unset in
+// dev/test. Never reached in production (resolveCookieSecret throws first).
+const DEV_FALLBACK_COOKIE_SECRET = 'development-cookie-secret-change-me-32bytes';
+
+function resolveCookieSecret(parsed: z.infer<typeof envSchema>): string {
+  if (parsed.COOKIE_SECRET) return parsed.COOKIE_SECRET;
+  if (parsed.NODE_ENV === 'production') {
+    throw new Error(
+      'COOKIE_SECRET is required in production. Generate one with `openssl rand -base64 32` (any 32+ random characters) and add it to your .env file.'
+    );
+  }
+  return DEV_FALLBACK_COOKIE_SECRET;
+}
 
 const ENCRYPTION_KEY_BYTES = 32;
 // Fixed (not random) so notification channels created in dev/test survive a
@@ -82,6 +101,7 @@ export function loadConfig(input: NodeJS.ProcessEnv = process.env): AppConfig {
     ...parsed,
     databasePath,
     staticDir: parsed.STATIC_DIR ? resolve(parsed.STATIC_DIR) : resolve('public'),
-    encryptionKey: resolveEncryptionKey(parsed)
+    encryptionKey: resolveEncryptionKey(parsed),
+    cookieSecret: resolveCookieSecret(parsed)
   };
 }

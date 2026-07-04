@@ -12,6 +12,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     ADMIN_USERNAME: undefined,
     ADMIN_PASSWORD: undefined,
     COOKIE_SECRET: 'test-only-cookie-secret-at-least-32-characters',
+    cookieSecret: 'test-only-cookie-secret-at-least-32-characters',
     SECURE_COOKIES: false,
     STATIC_DIR: undefined,
     BEAT_RETENTION_DAYS: 30,
