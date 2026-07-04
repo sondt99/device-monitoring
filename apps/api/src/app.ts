@@ -47,7 +47,32 @@ export async function buildApp(db: Db, config: AppConfig) {
     reply.code(500).send({ error: 'Internal server error' });
   });
 
-  await app.register(helmet, { contentSecurityPolicy: false });
+  // Defence-in-depth against XSS/clickjacking. The SPA is fully self-hosted:
+  // its built index.html references only external, same-origin JS/CSS (no
+  // inline <script>), and it talks only to same-origin /api. So we can lock
+  // script/connect down to 'self'. React applies runtime style="" attributes,
+  // hence 'unsafe-inline' on style-src only (never script-src). We do NOT set
+  // upgrade-insecure-requests: the app is routinely reached over plain HTTP on
+  // a LAN, and forcing an https upgrade would break subresource loading there.
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:'],
+        fontSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'self'"]
+      }
+    }
+  });
   await app.register(cookie, { secret: config.COOKIE_SECRET ?? 'development-cookie-secret-change-me-32bytes' });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
