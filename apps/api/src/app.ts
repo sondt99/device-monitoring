@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import Fastify, { type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -17,6 +18,15 @@ import { registerMaintenanceRoutes } from './routes/maintenance.js';
 import { registerNotificationRoutes } from './routes/notifications.js';
 import { registerStatusRoutes } from './routes/status.js';
 import { registerUserRoutes } from './routes/users.js';
+
+// Timing-safe string comparison. Hashing first fixes both inputs to 32 bytes
+// so timingSafeEqual never sees a length mismatch (which would itself leak the
+// secret's length) and can't early-exit on the first differing byte.
+function constantTimeEqual(a: string, b: string): boolean {
+  const ah = createHash('sha256').update(a).digest();
+  const bh = createHash('sha256').update(b).digest();
+  return timingSafeEqual(ah, bh);
+}
 
 export async function buildApp(db: Db, config: AppConfig) {
   const app = Fastify({
@@ -83,10 +93,13 @@ export async function buildApp(db: Db, config: AppConfig) {
   if (config.ENABLE_STATUS_PAGE) await registerStatusRoutes(app, db);
 
   if (config.ENABLE_METRICS) {
+    const expectedAuth = config.METRICS_TOKEN ? `Bearer ${config.METRICS_TOKEN}` : null;
     app.get('/metrics', async (request, reply) => {
       // Scrapers carry no session cookie, so this is gated by an optional
       // bearer token instead of the cookie-based auth used everywhere else.
-      if (config.METRICS_TOKEN && request.headers.authorization !== `Bearer ${config.METRICS_TOKEN}`) {
+      // Compare in constant time (SHA-256 then timingSafeEqual) so the token
+      // can't be recovered byte-by-byte via a response-timing side channel.
+      if (expectedAuth && !constantTimeEqual(request.headers.authorization ?? '', expectedAuth)) {
         return reply.code(401).send({ error: 'Unauthorized' });
       }
       reply.header('content-type', 'text/plain; version=0.0.4; charset=utf-8');

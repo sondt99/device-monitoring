@@ -65,8 +65,23 @@ function resolveTrustProxy(raw: string): boolean | number | string {
 // dev/test. Never reached in production (resolveCookieSecret throws first).
 const DEV_FALLBACK_COOKIE_SECRET = 'development-cookie-secret-change-me-32bytes';
 
+// Well-known values that satisfy the length check but are public (shipped in
+// .env.example / used as the dev fallback). Rejected in production so a
+// copy-paste deploy can't ship a guessable secret.
+const PLACEHOLDER_COOKIE_SECRETS = new Set([
+  'change-this-to-a-random-32-plus-character-secret',
+  DEV_FALLBACK_COOKIE_SECRET
+]);
+
 function resolveCookieSecret(parsed: z.infer<typeof envSchema>): string {
-  if (parsed.COOKIE_SECRET) return parsed.COOKIE_SECRET;
+  if (parsed.COOKIE_SECRET) {
+    if (parsed.NODE_ENV === 'production' && PLACEHOLDER_COOKIE_SECRETS.has(parsed.COOKIE_SECRET)) {
+      throw new Error(
+        'COOKIE_SECRET is set to a well-known placeholder value. Generate a real secret with `openssl rand -base64 32`.'
+      );
+    }
+    return parsed.COOKIE_SECRET;
+  }
   if (parsed.NODE_ENV === 'production') {
     throw new Error(
       'COOKIE_SECRET is required in production. Generate one with `openssl rand -base64 32` (any 32+ random characters) and add it to your .env file.'

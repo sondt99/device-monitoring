@@ -59,6 +59,18 @@ describe('production hardening in loadConfig', () => {
     expect(config.cookieSecret.length).toBeGreaterThanOrEqual(32);
   });
 
+  it('rejects the well-known placeholder COOKIE_SECRET in production', () => {
+    expect(() =>
+      loadConfig(
+        env({
+          NODE_ENV: 'production',
+          SECRET_ENCRYPTION_KEY: VALID_KEY,
+          COOKIE_SECRET: 'change-this-to-a-random-32-plus-character-secret'
+        })
+      )
+    ).toThrow(/well-known placeholder/);
+  });
+
   it('never resolves TRUST_PROXY to boolean true (anti IP-spoofing)', () => {
     // boolean true would trust the whole client-supplied X-Forwarded-For chain
     expect(loadConfig(env({ TRUST_PROXY: 'true' })).trustProxy).toBe(1);

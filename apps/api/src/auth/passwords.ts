@@ -16,3 +16,19 @@ export async function verifyPassword(hash: string, password: string): Promise<bo
     return false;
   }
 }
+
+// Lazily-computed argon2 hash of a throwaway password, memoized after first
+// use, so a login for a NON-existent user still performs one real argon2
+// verify and takes ~the same time as one for a real user — closing the
+// response-timing side channel that would otherwise reveal valid usernames.
+let dummyHashPromise: Promise<string> | null = null;
+function getDummyHash(): Promise<string> {
+  if (!dummyHashPromise) dummyHashPromise = hashPassword('argon2-timing-equalizer-not-a-real-secret');
+  return dummyHashPromise;
+}
+
+export async function verifyPasswordOrDummy(hash: string | undefined, password: string): Promise<boolean> {
+  const target = hash ?? (await getDummyHash());
+  const matches = await verifyPassword(target, password);
+  return hash ? matches : false;
+}
