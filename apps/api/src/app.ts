@@ -94,14 +94,24 @@ export async function buildApp(db: Db, config: AppConfig) {
     });
   }
 
+  // Gate on the *matched route pattern*, never the raw request.url. Fastify's
+  // router percent-decodes the path before matching, so a request to
+  // "/%61pi/devices" reaches the /api/devices handler while request.url still
+  // reads "/%61pi/devices" — matching the raw URL there let an unauthenticated
+  // caller slip past this hook entirely. routeOptions.url is the registered
+  // pattern (e.g. "/api/devices/:id"), immune to encoding tricks and query
+  // strings; it is undefined for unmatched (404) requests, which carry no data.
+  const requiresApiGate = (routeUrl: string | undefined): boolean =>
+    !!routeUrl && routeUrl.startsWith('/api/') && !publicApiRoutes.has(routeUrl);
+
   app.addHook('preHandler', async (request, reply) => {
-    if (!request.url.startsWith('/api/') || publicApiRoutes.has(request.url)) return;
+    if (!requiresApiGate(request.routeOptions.url)) return;
     await requireAuth(db)(request, reply);
   });
 
   app.addHook('preHandler', async (request, reply) => {
     if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method)) return;
-    if (!request.url.startsWith('/api/') || publicApiRoutes.has(request.url)) return;
+    if (!requiresApiGate(request.routeOptions.url)) return;
     if (request.headers['x-device-monitoring-csrf'] !== '1') {
       return reply.code(403).send({ error: 'Missing CSRF header' });
     }
