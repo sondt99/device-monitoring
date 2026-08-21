@@ -35,7 +35,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   login: (input: LoginInput) => request<{ user: User }>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
   logout: () => request<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
-  me: () => request<{ user: User }>('/api/auth/me'),
+  // `features` is optional so a client served by an older API degrades to
+  // hiding the flagged nav entries rather than throwing.
+  me: () => request<{ user: User; features?: { statusPage: boolean } }>('/api/auth/me'),
   summary: () => request<DashboardSummary>('/api/dashboard/summary'),
   devices: () => request<{ devices: Device[] }>('/api/devices'),
   device: (id: number) => request<{ device: Device }>(`/api/devices/${id}`),

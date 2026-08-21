@@ -89,7 +89,10 @@ export async function buildApp(db: Db, config: AppConfig) {
   const publicApiRoutes = new Set(['/api/auth/login', ...(config.ENABLE_STATUS_PAGE ? ['/api/status'] : [])]);
 
   app.get('/healthz', async () => ({ ok: true }));
-  await registerAuthRoutes(app, db, config.SECURE_COOKIES);
+  await registerAuthRoutes(app, db, {
+    secureCookies: config.SECURE_COOKIES,
+    statusPageEnabled: config.ENABLE_STATUS_PAGE
+  });
   if (config.ENABLE_STATUS_PAGE) await registerStatusRoutes(app, db);
 
   if (config.ENABLE_METRICS) {

@@ -5,7 +5,13 @@ import { mapUser } from '../db/mappers.js';
 import { clearSessionCookie, createSession, destroySession, setSessionCookie, sessionCookieName } from '../auth/sessions.js';
 import { verifyPasswordOrDummy } from '../auth/passwords.js';
 
-export async function registerAuthRoutes(app: FastifyInstance, db: Db, secureCookies: boolean): Promise<void> {
+export interface AuthRouteOptions {
+  secureCookies: boolean;
+  /** Mirrors config.ENABLE_STATUS_PAGE so the client can hide what it can't reach. */
+  statusPageEnabled: boolean;
+}
+
+export async function registerAuthRoutes(app: FastifyInstance, db: Db, options: AuthRouteOptions): Promise<void> {
   // Brute-force / credential-stuffing guard: a much tighter budget than the
   // global limiter (unauthenticated, internet-reachable endpoint). Keyed on
   // client IP by the rate-limit plugin (see TRUST_PROXY for proxied setups).
@@ -26,7 +32,7 @@ export async function registerAuthRoutes(app: FastifyInstance, db: Db, secureCoo
     const existingSession = request.cookies[sessionCookieName];
     if (existingSession) destroySession(db, existingSession);
     const sessionId = createSession(db, Number(row.id));
-    setSessionCookie(reply, sessionId, secureCookies);
+    setSessionCookie(reply, sessionId, options.secureCookies);
     return { user: mapUser(row) };
   });
 
@@ -37,5 +43,12 @@ export async function registerAuthRoutes(app: FastifyInstance, db: Db, secureCoo
     return { ok: true };
   });
 
-  app.get('/api/auth/me', async (request) => ({ user: request.user }));
+  // The web bundle is built once and served by whichever instance hosts it, so
+  // runtime feature flags cannot be baked in at build time — the client has to
+  // ask. Without this the nav advertises /status even when the route is not
+  // registered, sending operators to a dead end.
+  app.get('/api/auth/me', async (request) => ({
+    user: request.user,
+    features: { statusPage: options.statusPageEnabled }
+  }));
 }

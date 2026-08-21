@@ -3,8 +3,11 @@ import { createDeviceSchema } from '@device-monitoring/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { migrate, openDatabase, type Db } from '../src/db/database.js';
+import { bootstrapAdmin } from '../src/auth/bootstrap.js';
 import { createDevice } from '../src/devices/repository.js';
-import { testConfig } from './helpers.js';
+import { loginCookie, testConfig } from './helpers.js';
+
+const ADMIN_PASSWORD = 'admin-password-long-enough';
 
 describe('public status page', () => {
   let db: Db;
@@ -29,6 +32,22 @@ describe('public status page', () => {
     await app.close();
   });
 
+  // The nav link is rendered from this flag, so if /api/auth/me stops
+  // reporting it the UI silently goes back to advertising a dead end.
+  it.each([true, false])('reports statusPage=%s on /api/auth/me', async (enabled) => {
+    await bootstrapAdmin(db, 'admin', ADMIN_PASSWORD);
+    const app = await buildApp(db, testConfig({ ENABLE_STATUS_PAGE: enabled }));
+    await app.ready();
+    const cookie = await loginCookie(app, 'admin', ADMIN_PASSWORD);
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { features: { statusPage: boolean } };
+    expect(body.features.statusPage).toBe(enabled);
+    await app.close();
+  });
+
   it('is secure by default: a device created with only required fields is not public', () => {
     const device = createDevice(db, createDeviceSchema.parse({ name: 'NAS', host: '10.0.0.5' }));
     expect(device.isPublic).toBe(false);
@@ -45,6 +64,35 @@ describe('public status page', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body) as { devices: { name: string }[] };
     expect(body.devices.map((d) => d.name)).toEqual(['Public up']);
+    await app.close();
+  });
+
+  // The status page renders whatever this projection returns, to anonymous
+  // visitors. Pinning the exact key set means widening it has to be a
+  // deliberate edit here rather than something a `mapDevice` change leaks by
+  // accident — host and checkType in particular expose internal topology.
+  it('exposes only presentational fields — never host, port, or check type', async () => {
+    createDevice(
+      db,
+      createDeviceSchema.parse({ name: 'Public', host: '10.0.0.9', checkType: 'tcp', checkPort: 445, isPublic: true })
+    );
+
+    const app = await buildApp(db, testConfig({ ENABLE_STATUS_PAGE: true }));
+    const res = await app.inject({ method: 'GET', url: '/api/status' });
+
+    const body = JSON.parse(res.body) as { devices: Record<string, unknown>[] };
+    expect(Object.keys(body.devices[0]).sort()).toEqual([
+      'currentStatus',
+      'group',
+      'lastCheckedAt',
+      'lastLatencyMs',
+      'lastOnlineAt',
+      'name'
+    ]);
+    // Belt and braces: the internals must not appear anywhere in the payload.
+    expect(res.body).not.toContain('10.0.0.9');
+    expect(res.body).not.toContain('445');
+    expect(res.body).not.toContain('tcp');
     await app.close();
   });
 });

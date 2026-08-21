@@ -12,7 +12,11 @@ export function makeApiMock(user: User | null) {
   return {
     login: vi.fn(),
     logout: vi.fn(),
-    me: vi.fn(() => (user ? Promise.resolve({ user }) : Promise.reject(new Error('Authentication required')))),
+    me: vi.fn(() =>
+      user
+        ? Promise.resolve({ user, features: { statusPage: true } })
+        : Promise.reject(new Error('Authentication required'))
+    ),
     summary: vi.fn(() => Promise.resolve(emptySummary)),
     devices: vi.fn(() => Promise.resolve({ devices: [] })),
     device: vi.fn(),

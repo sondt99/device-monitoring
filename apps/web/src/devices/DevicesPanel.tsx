@@ -70,7 +70,11 @@ export function DevicesPanel() {
             <div className="table-actions">
               {groups.length > 0 ? (
                 <div className="group-filter">
-                  <select value={groupFilter ?? ''} onChange={(e) => setGroupFilter(e.target.value || null)}>
+                  <select
+                    aria-label="Filter by group"
+                    value={groupFilter ?? ''}
+                    onChange={(e) => setGroupFilter(e.target.value || null)}
+                  >
                     <option value="">All groups</option>
                     {groups.map((g) => (
                       <option key={g} value={g}>{g}</option>
@@ -134,12 +138,15 @@ export function DevicesPanel() {
                     <td>
                       <StatusBadge status={device.currentStatus} />
                     </td>
+                    {/* Only threshold *exceedance* is coloured. A normal reading stays
+                        neutral: the status badge already reports health, so tinting every
+                        latency green would repeat it and dilute the real warnings. */}
                     <td
                       className={`mono ${
-                        device.lastLatencyMs !== null && device.latencyThresholdMs
-                          ? device.lastLatencyMs > device.latencyThresholdMs
-                            ? 'value-warn'
-                            : 'value-up'
+                        device.lastLatencyMs !== null &&
+                        device.latencyThresholdMs &&
+                        device.lastLatencyMs > device.latencyThresholdMs
+                          ? 'value-warn'
                           : ''
                       }`}
                     >
