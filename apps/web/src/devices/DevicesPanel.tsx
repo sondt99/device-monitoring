@@ -70,7 +70,11 @@ export function DevicesPanel() {
             <div className="table-actions">
               {groups.length > 0 ? (
                 <div className="group-filter">
-                  <select value={groupFilter ?? ''} onChange={(e) => setGroupFilter(e.target.value || null)}>
+                  <select
+                    aria-label="Filter by group"
+                    value={groupFilter ?? ''}
+                    onChange={(e) => setGroupFilter(e.target.value || null)}
+                  >
                     <option value="">All groups</option>
                     {groups.map((g) => (
                       <option key={g} value={g}>{g}</option>

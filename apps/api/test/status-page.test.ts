@@ -66,4 +66,33 @@ describe('public status page', () => {
     expect(body.devices.map((d) => d.name)).toEqual(['Public up']);
     await app.close();
   });
+
+  // The status page renders whatever this projection returns, to anonymous
+  // visitors. Pinning the exact key set means widening it has to be a
+  // deliberate edit here rather than something a `mapDevice` change leaks by
+  // accident — host and checkType in particular expose internal topology.
+  it('exposes only presentational fields — never host, port, or check type', async () => {
+    createDevice(
+      db,
+      createDeviceSchema.parse({ name: 'Public', host: '10.0.0.9', checkType: 'tcp', checkPort: 445, isPublic: true })
+    );
+
+    const app = await buildApp(db, testConfig({ ENABLE_STATUS_PAGE: true }));
+    const res = await app.inject({ method: 'GET', url: '/api/status' });
+
+    const body = JSON.parse(res.body) as { devices: Record<string, unknown>[] };
+    expect(Object.keys(body.devices[0]).sort()).toEqual([
+      'currentStatus',
+      'group',
+      'lastCheckedAt',
+      'lastLatencyMs',
+      'lastOnlineAt',
+      'name'
+    ]);
+    // Belt and braces: the internals must not appear anywhere in the payload.
+    expect(res.body).not.toContain('10.0.0.9');
+    expect(res.body).not.toContain('445');
+    expect(res.body).not.toContain('tcp');
+    await app.close();
+  });
 });
