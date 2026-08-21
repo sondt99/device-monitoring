@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Footer } from './components/index.js';
 import { useMe } from './auth/useMe.js';
-import { useLiveTitle } from './lib/useLiveTitle.js';
+import { useLiveFavicon } from './lib/useLiveFavicon.js';
 import { useTheme } from './lib/useTheme.js';
 import { api } from './api.js';
 
@@ -37,7 +37,7 @@ export function AppShell() {
     }
   });
   const summary = useQuery({ queryKey: ['summary'], queryFn: api.summary, refetchInterval: 10_000 });
-  useLiveTitle((summary.data?.down ?? 0) + (summary.data?.degraded ?? 0));
+  useLiveFavicon((summary.data?.down ?? 0) + (summary.data?.degraded ?? 0));
 
   const up = summary.data?.up ?? 0;
   const degraded = summary.data?.degraded ?? 0;

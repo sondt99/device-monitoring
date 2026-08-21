@@ -1,7 +1,5 @@
 import { useEffect } from 'react';
 
-const BASE_TITLE = 'Device Monitoring';
-
 /**
  * Resolves a design token off the root element, URL-encoded for a data: URI.
  *
@@ -25,10 +23,17 @@ function paintFavicon(fill: string): void {
   link.href = `data:image/svg+xml,${svg}`;
 }
 
-export function useLiveTitle(down: number) {
+/**
+ * Reflects fleet health in the favicon, so a backgrounded tab still shows a
+ * red dot when something is down.
+ *
+ * The tab title is deliberately left untouched. Titles are long-lived and
+ * legible from across a room or in a screen share, and spelling out a count
+ * there put "(2 down)" in front of anyone looking at the machine.
+ */
+export function useLiveFavicon(down: number) {
   useEffect(() => {
     const paint = () => {
-      document.title = down > 0 ? `(${down} down) ${BASE_TITLE}` : BASE_TITLE;
       paintFavicon(down > 0 ? readToken('--sig-down', '#ff3040') : readToken('--sig-up', '#00e07a'));
     };
 
@@ -44,15 +49,14 @@ export function useLiveTitle(down: number) {
   // Separate effect with no deps so this runs on real unmount only, not on
   // every change to `down`.
   //
-  // The title and favicon are document-level state that outlives this hook.
-  // AppShell renders behind RequireAuth, so logging out — or a session simply
-  // expiring — unmounts it and shows /login. Without this reset the tab would
-  // go on advertising the fleet's failure count on an unauthenticated page,
-  // for whoever is next at that machine. Reset to the neutral token rather
-  // than a signal colour: logged out means no reading, not a good one.
+  // The favicon is document-level state that outlives this hook, and it is now
+  // the only place fleet health surfaces outside the app. AppShell renders
+  // behind RequireAuth, so logging out — or a session expiring — unmounts it
+  // and shows /login; without this reset the login page would keep displaying
+  // a red dot. Neutral rather than the up signal: logged out means no reading,
+  // not a good one.
   useEffect(
     () => () => {
-      document.title = BASE_TITLE;
       paintFavicon(readToken('--fg-muted', '#a3a3a3'));
     },
     []
