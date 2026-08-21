@@ -3,8 +3,11 @@ import { createDeviceSchema } from '@device-monitoring/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { migrate, openDatabase, type Db } from '../src/db/database.js';
+import { bootstrapAdmin } from '../src/auth/bootstrap.js';
 import { createDevice } from '../src/devices/repository.js';
-import { testConfig } from './helpers.js';
+import { loginCookie, testConfig } from './helpers.js';
+
+const ADMIN_PASSWORD = 'admin-password-long-enough';
 
 describe('public status page', () => {
   let db: Db;
@@ -26,6 +29,22 @@ describe('public status page', () => {
     // gates it — a request without a session gets 401, same as any other
     // unknown /api/* path, rather than confirming the route's existence.
     expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  // The nav link is rendered from this flag, so if /api/auth/me stops
+  // reporting it the UI silently goes back to advertising a dead end.
+  it.each([true, false])('reports statusPage=%s on /api/auth/me', async (enabled) => {
+    await bootstrapAdmin(db, 'admin', ADMIN_PASSWORD);
+    const app = await buildApp(db, testConfig({ ENABLE_STATUS_PAGE: enabled }));
+    await app.ready();
+    const cookie = await loginCookie(app, 'admin', ADMIN_PASSWORD);
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { features: { statusPage: boolean } };
+    expect(body.features.statusPage).toBe(enabled);
     await app.close();
   });
 

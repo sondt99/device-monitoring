@@ -25,7 +25,7 @@ function ThemeIcon({ theme }: { theme: 'dark' | 'light' }) {
 }
 
 export function AppShell() {
-  const { user, isAdmin } = useMe();
+  const { user, isAdmin, statusPageEnabled } = useMe();
   const { theme, toggleTheme } = useTheme();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -94,9 +94,13 @@ export function AppShell() {
             Users
           </NavLink>
         ) : null}
-        <a className="nav-link nav-link-external" href="/status" target="_blank" rel="noreferrer">
-          Status page ↗
-        </a>
+        {/* Only advertised when the server actually registered the route —
+            otherwise this link is a guaranteed dead end. */}
+        {statusPageEnabled ? (
+          <a className="nav-link nav-link-external" href="/status" target="_blank" rel="noreferrer">
+            Status page ↗
+          </a>
+        ) : null}
       </nav>
 
       <Outlet />
