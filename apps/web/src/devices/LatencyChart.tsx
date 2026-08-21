@@ -3,9 +3,13 @@ import { formatDateTime, formatLatency } from '../lib/format.js';
 
 // SVG presentation attributes can't resolve `var()`, so theme-aware colors
 // are applied via the style prop instead of stroke=/fill= attributes.
-const accent = { color: 'var(--accent)' };
-const danger = { color: 'var(--danger)' };
-const warning = { color: 'var(--warning)' };
+//
+// The trace itself is achromatic: latency is a measurement, not a health
+// state. Only the two annotations that report health — the alert threshold
+// and the down markers — carry a signal colour.
+const trace = { color: 'var(--chart-line)' };
+const signalDown = { color: 'var(--sig-down)' };
+const signalWarn = { color: 'var(--sig-warn)' };
 
 export function LatencyChart({ beats, deviceId, thresholdMs }: { beats: Beat[]; deviceId: number; thresholdMs?: number | null }) {
   const W = 1000;
@@ -55,8 +59,8 @@ export function LatencyChart({ beats, deviceId, thresholdMs }: { beats: Beat[]; 
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" style={{ stopColor: 'var(--accent)', stopOpacity: 0.22 }} />
-              <stop offset="100%" style={{ stopColor: 'var(--accent)', stopOpacity: 0 }} />
+              <stop offset="0%" style={{ stopColor: 'var(--chart-line)', stopOpacity: 0.16 }} />
+              <stop offset="100%" style={{ stopColor: 'var(--chart-line)', stopOpacity: 0 }} />
             </linearGradient>
           </defs>
 
@@ -67,7 +71,7 @@ export function LatencyChart({ beats, deviceId, thresholdMs }: { beats: Beat[]; 
 
           {/* Latency alert threshold */}
           {thresholdMs ? (
-            <g style={warning}>
+            <g style={signalWarn}>
               <line
                 x1={0}
                 y1={yOf(thresholdMs)}
@@ -86,7 +90,7 @@ export function LatencyChart({ beats, deviceId, thresholdMs }: { beats: Beat[]; 
 
           {/* Down beat markers */}
           {downBeats.map(({ b, i }) => (
-            <g key={b.id} style={danger}>
+            <g key={b.id} style={signalDown}>
               <line
                 x1={xOf(i)}
                 y1={PY}
@@ -118,9 +122,9 @@ export function LatencyChart({ beats, deviceId, thresholdMs }: { beats: Beat[]; 
                 key={si}
                 points={seg.map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
-                style={accent}
+                style={trace}
                 stroke="currentColor"
-                strokeWidth="2.5"
+                strokeWidth="2"
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
@@ -131,7 +135,7 @@ export function LatencyChart({ beats, deviceId, thresholdMs }: { beats: Beat[]; 
           {beats.map((b, i) => {
             if (b.status !== 'up' || b.latencyMs === null) return null;
             return (
-              <circle key={b.id} cx={xOf(i)} cy={yOf(b.latencyMs)} r={dotR} style={accent} fill="currentColor">
+              <circle key={b.id} cx={xOf(i)} cy={yOf(b.latencyMs)} r={dotR} style={trace} fill="currentColor">
                 <title>
                   {formatDateTime(b.checkedAt)} · {formatLatency(b.latencyMs)}
                 </title>

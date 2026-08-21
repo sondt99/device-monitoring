@@ -134,12 +134,15 @@ export function DevicesPanel() {
                     <td>
                       <StatusBadge status={device.currentStatus} />
                     </td>
+                    {/* Only threshold *exceedance* is coloured. A normal reading stays
+                        neutral: the status badge already reports health, so tinting every
+                        latency green would repeat it and dilute the real warnings. */}
                     <td
                       className={`mono ${
-                        device.lastLatencyMs !== null && device.latencyThresholdMs
-                          ? device.lastLatencyMs > device.latencyThresholdMs
-                            ? 'value-warn'
-                            : 'value-up'
+                        device.lastLatencyMs !== null &&
+                        device.latencyThresholdMs &&
+                        device.lastLatencyMs > device.latencyThresholdMs
+                          ? 'value-warn'
                           : ''
                       }`}
                     >

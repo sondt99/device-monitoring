@@ -6,6 +6,24 @@ import { useLiveTitle } from './lib/useLiveTitle.js';
 import { useTheme } from './lib/useTheme.js';
 import { api } from './api.js';
 
+/**
+ * Monochrome theme glyphs. Emoji (☀️/🌙) render in their own fixed colours and
+ * would be the only uncontrolled hue in the interface, so the toggle draws its
+ * own icons in `currentColor` instead.
+ */
+function ThemeIcon({ theme }: { theme: 'dark' | 'light' }) {
+  return theme === 'dark' ? (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.5" />
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.1 5.1l1.4 1.4M17.5 17.5l1.4 1.4M18.9 5.1l-1.4 1.4M6.5 17.5l-1.4 1.4" />
+    </svg>
+  ) : (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.7 8.7 0 1 0 11.1 11.1Z" />
+    </svg>
+  );
+}
+
 export function AppShell() {
   const { user, isAdmin } = useMe();
   const { theme, toggleTheme } = useTheme();
@@ -46,7 +64,7 @@ export function AppShell() {
             title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             onClick={toggleTheme}
           >
-            {theme === 'dark' ? '☀️' : '🌙'}
+            <ThemeIcon theme={theme} />
           </button>
           <span className="user-chip">
             {user?.username ?? 'Admin'}
